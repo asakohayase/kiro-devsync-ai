@@ -1,0 +1,20 @@
+# Slack Integration
+slack-sdk==3.27.1
+
+# FastAPI for webhooks
+fastapi==0.104.1
+uvicorn==0.24.0
+
+# Utilities
+python-dotenv==1.0.0
+pydantic==2.5.0
+requests==2.31.0
+
+# GitHub Integration
+PyGithub==2.1.1
+
+# Database
+supabase==2.3.4
+
+# Testing
+pytest==7.4.3
