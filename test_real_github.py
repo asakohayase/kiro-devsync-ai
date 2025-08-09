@@ -40,7 +40,9 @@ async def test_github_connection():
         print(f"✅ Found {len(prs)} open pull requests")
 
         for pr in prs[:3]:  # Show first 3 PRs
-            print(f"   - PR #{pr.id}: {pr.title} by {pr.author} ({pr.status.value})")
+            print(
+                f"   - PR #{pr.id}: {pr.title} by {pr.author} ({pr.status.value if hasattr(pr.status, 'value') else str(pr.status)})"
+            )
 
         # Test repository restriction
         print("\n4. Testing repository restriction...")

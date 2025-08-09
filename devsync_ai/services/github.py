@@ -404,7 +404,9 @@ class GitHubService:
                         "id": pr.id,
                         "title": pr.title,
                         "author": pr.author,
-                        "status": pr.status.value,
+                        "status": (
+                            pr.status.value if hasattr(pr.status, "value") else str(pr.status)
+                        ),
                         "merge_conflicts": pr.merge_conflicts,
                         "reviewers": pr.reviewers,
                         "labels": pr.labels,
