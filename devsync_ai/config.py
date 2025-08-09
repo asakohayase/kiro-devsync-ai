@@ -1,6 +1,7 @@
 """Configuration management for DevSync AI."""
 
-from pydantic import BaseSettings, Field
+from pydantic import Field
+from pydantic_settings import BaseSettings
 from typing import Optional
 
 
@@ -27,6 +28,7 @@ class Settings(BaseSettings):
     # GitHub settings
     github_token: str = Field(..., env="GITHUB_TOKEN")
     github_webhook_secret: str = Field(..., env="GITHUB_WEBHOOK_SECRET")
+    github_repository: str = Field(default="asakohayase/kiro-devsync-ai", env="GITHUB_REPOSITORY")
 
     # JIRA settings
     jira_url: str = Field(..., env="JIRA_URL")
