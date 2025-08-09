@@ -54,10 +54,31 @@ async def root() -> Dict[str, str]:
 @api_router.get("/github/prs")
 async def get_github_prs(
     authenticated: bool = Depends(verify_api_key),
-) -> Dict[str, str]:
+) -> Dict[str, Any]:
     """Get GitHub pull request summaries."""
-    # TODO: Implement in task 3.2
-    return {"message": "GitHub PR endpoint - to be implemented"}
+    try:
+        from devsync_ai.services.github import GitHubService
+
+        service = GitHubService()
+        summary = await service.get_default_pr_summary()
+        return summary
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch GitHub PRs: {str(e)}")
+
+
+@api_router.get("/github/test")
+async def test_github_auth(
+    authenticated: bool = Depends(verify_api_key),
+) -> Dict[str, Any]:
+    """Test GitHub authentication."""
+    try:
+        from devsync_ai.services.github import GitHubService
+
+        service = GitHubService()
+        auth_info = await service.test_authentication()
+        return auth_info
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"GitHub authentication failed: {str(e)}")
 
 
 @api_router.get("/jira/tickets")

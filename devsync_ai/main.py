@@ -62,7 +62,7 @@ def setup_middleware(app: FastAPI) -> None:
     if not settings.debug:
         app.add_middleware(
             TrustedHostMiddleware,
-            allowed_hosts=["your-domain.com", "*.your-domain.com"],
+            allowed_hosts=["your-domain.com", "*.your-domain.com", "testserver"],
         )
 
     # Request timing middleware
@@ -99,6 +99,10 @@ def setup_event_handlers(app: FastAPI) -> None:
         # TODO: Close database connections, Redis, etc.
 
 
+# Create the application instance
+app = create_app()
+
+
 # Global exception handler
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
@@ -131,16 +135,16 @@ async def general_exception_handler(request: Request, exc: Exception):
     )
 
 
-# Create the application instance
-app = create_app()
-
-
 if __name__ == "__main__":
     import uvicorn
+    import os
+
+    # Use PORT from environment (for Render) or fall back to settings
+    port = int(os.environ.get("PORT", settings.api_port))
 
     uvicorn.run(
         "devsync_ai.main:app",
-        host=settings.api_host,
-        port=settings.api_port,
+        host="0.0.0.0",  # Bind to all interfaces for deployment
+        port=port,
         reload=settings.debug,
     )

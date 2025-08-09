@@ -1,0 +1,43 @@
+services:
+  - type: web
+    name: devsync-ai
+    env: python
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "uvicorn devsync_ai.main:app --host 0.0.0.0 --port $PORT"
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.2
+      - key: DEBUG
+        value: false
+      - key: SECRET_KEY
+        generateValue: true
+      - key: API_KEY
+        generateValue: true
+      - key: GITHUB_TOKEN
+        sync: false  # You'll set this manually
+      - key: GITHUB_WEBHOOK_SECRET
+        value: 8fb8580b634ac3f87949ea902b08ba8f10100948
+      - key: GITHUB_REPOSITORY
+        value: asakohayase/kiro-devsync-ai
+      - key: SUPABASE_URL
+        value: https://pbkmbvvqjjglvuoilbwu.supabase.co
+      - key: SUPABASE_KEY
+        value: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBia21idnZxampnbHZ1b2lsYnd1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQzMzQ3NzcsImV4cCI6MjA2OTkxMDc3N30.3Sd7IFUDbJ78J4tSfceBgl2SLHV9_Pois3sgAkmOqfQ
+      - key: REDIS_URL
+        value: redis://localhost:6379
+      - key: JIRA_URL
+        value: https://your-company.atlassian.net
+      - key: JIRA_USERNAME
+        value: your-jira-email@company.com
+      - key: JIRA_TOKEN
+        value: your-jira-api-token
+      - key: SLACK_BOT_TOKEN
+        value: xoxb-your-slack-bot-token
+      - key: SLACK_SIGNING_SECRET
+        value: your-slack-signing-secret
+      - key: SLACK_DEFAULT_CHANNEL
+        value: "#general"
+      - key: STANDUP_TIME
+        value: "09:00"
+      - key: CHANGELOG_DAY
+        value: friday
