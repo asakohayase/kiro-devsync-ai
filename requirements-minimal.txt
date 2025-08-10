@@ -1,8 +1,0 @@
-# Minimal requirements for deployment
-fastapi==0.104.1
-uvicorn==0.24.0
-pydantic==2.5.0
-pydantic-settings==2.1.0
-httpx==0.24.1
-PyGithub==2.1.1
-python-multipart==0.0.6
