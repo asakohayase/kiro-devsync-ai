@@ -2,7 +2,7 @@ services:
   - type: web
     name: devsync-ai
     env: python
-    buildCommand: "pip install --upgrade pip setuptools wheel && pip install --no-cache-dir --only-binary=:all: --prefer-binary --no-build-isolation -r requirements-core.txt"
+    buildCommand: "pip install --upgrade pip setuptools wheel && pip install --no-cache-dir --only-binary=:all: --prefer-binary --no-build-isolation -r requirements.txt"
     startCommand: "uvicorn devsync_ai.main:app --host 0.0.0.0 --port $PORT"
     envVars:
       - key: PYTHON_VERSION
