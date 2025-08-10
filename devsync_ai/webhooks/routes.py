@@ -55,9 +55,7 @@ async def github_webhook(
     payload = await request.body()
 
     # Verify signature
-    if not x_hub_signature_256 or not verify_github_signature(
-        payload, x_hub_signature_256
-    ):
+    if not x_hub_signature_256 or not verify_github_signature(payload, x_hub_signature_256):
         raise HTTPException(status_code=401, detail="Invalid signature")
 
     logger.info(f"Received GitHub webhook event: {x_github_event}")
@@ -75,9 +73,7 @@ async def jira_webhook(request: Request) -> Dict[str, str]:
     """Handle JIRA webhook events."""
     payload = await request.json()
 
-    logger.info(
-        f"Received JIRA webhook event: {payload.get('webhookEvent', 'unknown')}"
-    )
+    logger.info(f"Received JIRA webhook event: {payload.get('webhookEvent', 'unknown')}")
 
     # TODO: Implement event processing in task 7.2
     # - Validate JIRA webhook payload

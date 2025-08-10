@@ -25,10 +25,8 @@
 3. **Configure Build Settings**:
    - **Name**: `devsync-ai`
    - **Environment**: `Python 3`
-   - **Build Command** (Option 1 - with uv): `curl -LsSf https://astral.sh/uv/install.sh | sh && source $HOME/.cargo/env && uv sync --frozen`
-   - **Build Command** (Option 2 - fallback): `pip install -r requirements.txt`
-   - **Start Command** (with uv): `uv run uvicorn devsync_ai.main:app --host 0.0.0.0 --port $PORT`
-   - **Start Command** (fallback): `uvicorn devsync_ai.main:app --host 0.0.0.0 --port $PORT`
+   - **Build Command**: `./render-build.sh` (custom script to handle uv conflicts)
+   - **Start Command**: `uvicorn devsync_ai.main:app --host 0.0.0.0 --port $PORT`
 
 4. **Set Environment Variables**:
    Go to Environment tab and add:
@@ -69,9 +67,20 @@
 ### Troubleshooting
 
 - **Build fails**: Check requirements.txt and Python version
+- **"Shadowed commands" error**: Fixed with custom build script that removes conflicting uv installations
+- **Build script fails**: Try fallback build command: `pip install --no-cache-dir --only-binary=cryptography,bcrypt,pydantic -r requirements.txt`
 - **App crashes**: Check logs in Render dashboard
 - **GitHub API fails**: Verify GITHUB_TOKEN is set correctly
 - **Database issues**: Check SUPABASE_URL and SUPABASE_KEY
+- **Build cache issues**: Try triggering a manual deploy to clear cache
+
+### Alternative Build Commands (if build script fails)
+
+If the custom build script doesn't work, try these alternatives in Render's build command field:
+
+1. **Simple approach**: `pip install -r requirements.txt`
+2. **With binary packages**: `pip install --only-binary=cryptography,bcrypt,pydantic -r requirements.txt`
+3. **With PATH cleanup**: `export PATH=/usr/local/bin:/usr/bin:/bin && pip install -r requirements.txt`
 
 ### Free Tier Limitations
 
