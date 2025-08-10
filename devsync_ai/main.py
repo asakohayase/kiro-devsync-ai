@@ -62,7 +62,12 @@ def setup_middleware(app: FastAPI) -> None:
     if not settings.debug:
         app.add_middleware(
             TrustedHostMiddleware,
-            allowed_hosts=["your-domain.com", "*.your-domain.com", "testserver"],
+            allowed_hosts=[
+                "kiro-devsync-ai.onrender.com",
+                "*.onrender.com",
+                "localhost",
+                "testserver",
+            ],
         )
 
     # Request timing middleware
