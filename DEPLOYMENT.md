@@ -78,9 +78,10 @@
 
 If the custom build script doesn't work, try these alternatives in Render's build command field:
 
-1. **Simple approach**: `pip install -r requirements.txt`
-2. **With binary packages**: `pip install --only-binary=cryptography,bcrypt,pydantic -r requirements.txt`
-3. **With PATH cleanup**: `export PATH=/usr/local/bin:/usr/bin:/bin && pip install -r requirements.txt`
+1. **Binary-only approach**: `pip install --no-cache-dir --only-binary=:all: --prefer-binary -r requirements.txt`
+2. **With PATH cleanup**: `export PATH=/usr/local/bin:/usr/bin:/bin && pip install --only-binary=:all: -r requirements.txt`
+3. **Simple fallback**: `pip install -r requirements.txt`
+4. **Manual Rust cleanup**: `rm -rf ~/.cargo ~/.rustup && pip install --only-binary=:all: -r requirements.txt`
 
 ### Free Tier Limitations
 
