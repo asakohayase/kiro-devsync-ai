@@ -2,7 +2,7 @@ services:
   - type: web
     name: devsync-ai
     env: python
-    buildCommand: "./render-build.sh"
+    buildCommand: "pip install --upgrade pip && pip install --no-cache-dir --only-binary=:all: -r requirements.txt"
     startCommand: "uvicorn devsync_ai.main:app --host 0.0.0.0 --port $PORT"
     envVars:
       - key: PYTHON_VERSION
