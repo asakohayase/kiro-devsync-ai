@@ -16,7 +16,7 @@ services:
       - key: GITHUB_TOKEN
         sync: false  # You'll set this manually
       - key: GITHUB_WEBHOOK_SECRET
-        value: 8fb8580b634ac3f87949ea902b08ba8f10100948
+        sync: false  # You'll set this manually in Render dashboard
       - key: GITHUB_REPOSITORY
         value: asakohayase/kiro-devsync-ai
       - key: SUPABASE_URL

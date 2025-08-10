@@ -81,6 +81,73 @@ async def test_github_auth(
         raise HTTPException(status_code=500, detail=f"GitHub authentication failed: {str(e)}")
 
 
+@api_router.get("/github/changelog")
+async def generate_changelog(
+    authenticated: bool = Depends(verify_api_key), days: int = 7, format: str = "json"
+) -> Dict[str, Any]:
+    """Generate changelog from recent commits."""
+    try:
+        from devsync_ai.services.github import GitHubService
+        from datetime import datetime, timedelta
+
+        service = GitHubService()
+        since_date = datetime.now() - timedelta(days=days)
+
+        changelog_data = await service.generate_changelog_data(
+            service.get_default_repository(), since_date
+        )
+
+        if format.lower() == "markdown":
+            markdown = await service.format_changelog_markdown(changelog_data)
+            return {"format": "markdown", "content": markdown}
+        else:
+            return {"format": "json", "data": changelog_data}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate changelog: {str(e)}")
+
+
+@api_router.get("/github/commits")
+async def get_recent_commits(
+    authenticated: bool = Depends(verify_api_key), days: int = 7
+) -> Dict[str, Any]:
+    """Get recent commits with analysis."""
+    try:
+        from devsync_ai.services.github import GitHubService
+        from datetime import datetime, timedelta
+
+        service = GitHubService()
+        since_date = datetime.now() - timedelta(days=days)
+
+        commits = await service.get_commits_since(service.get_default_repository(), since_date)
+
+        # Convert CommitInfo objects to dictionaries
+        commit_data = []
+        for commit in commits:
+            commit_data.append(
+                {
+                    "sha": commit.sha,
+                    "message": commit.message,
+                    "author": commit.author,
+                    "date": commit.date.isoformat(),
+                    "category": commit.category,
+                    "description": commit.description,
+                    "breaking_change": commit.breaking_change,
+                    "pr_number": commit.pr_number,
+                }
+            )
+
+        return {
+            "repository": service.get_default_repository(),
+            "period_days": days,
+            "total_commits": len(commits),
+            "commits": commit_data,
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get commits: {str(e)}")
+
+
 @api_router.get("/jira/tickets")
 async def get_jira_tickets(
     authenticated: bool = Depends(verify_api_key),
