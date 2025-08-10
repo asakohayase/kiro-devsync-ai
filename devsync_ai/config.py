@@ -26,18 +26,18 @@ class Settings(BaseSettings):
     redis_url: str = Field(default="redis://localhost:6379", env="REDIS_URL")
 
     # GitHub settings
-    github_token: str = Field(..., env="GITHUB_TOKEN")
-    github_webhook_secret: str = Field(..., env="GITHUB_WEBHOOK_SECRET")
+    github_token: Optional[str] = Field(default=None, env="GITHUB_TOKEN")
+    github_webhook_secret: Optional[str] = Field(default=None, env="GITHUB_WEBHOOK_SECRET")
     github_repository: str = Field(default="asakohayase/kiro-devsync-ai", env="GITHUB_REPOSITORY")
 
     # JIRA settings
-    jira_url: str = Field(..., env="JIRA_URL")
-    jira_username: str = Field(..., env="JIRA_USERNAME")
-    jira_token: str = Field(..., env="JIRA_TOKEN")
+    jira_url: Optional[str] = Field(default=None, env="JIRA_URL")
+    jira_username: Optional[str] = Field(default=None, env="JIRA_USERNAME")
+    jira_token: Optional[str] = Field(default=None, env="JIRA_TOKEN")
 
     # Slack settings
-    slack_bot_token: str = Field(..., env="SLACK_BOT_TOKEN")
-    slack_signing_secret: str = Field(..., env="SLACK_SIGNING_SECRET")
+    slack_bot_token: Optional[str] = Field(default=None, env="SLACK_BOT_TOKEN")
+    slack_signing_secret: Optional[str] = Field(default=None, env="SLACK_SIGNING_SECRET")
     slack_default_channel: str = Field(default="#general", env="SLACK_DEFAULT_CHANNEL")
 
     # Scheduler settings
@@ -45,7 +45,7 @@ class Settings(BaseSettings):
     changelog_day: str = Field(default="friday", env="CHANGELOG_DAY")
 
     # Security settings
-    secret_key: str = Field(..., env="SECRET_KEY")
+    secret_key: Optional[str] = Field(default=None, env="SECRET_KEY")
     api_key: Optional[str] = Field(default=None, env="API_KEY")
 
     class Config:
