@@ -191,7 +191,6 @@ async def get_weekly_changelog(
 @api_router.post("/webhooks/github")
 async def github_webhook_handler(
     payload: Dict[str, Any],
-    authenticated: bool = Depends(verify_api_key),
 ) -> Dict[str, Any]:
     """Handle GitHub webhook events for JIRA integration."""
     try:
