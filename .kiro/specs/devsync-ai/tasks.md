@@ -41,24 +41,28 @@
     - _Requirements: 4.1, 4.2, 4.3_
 
 - [ ] 4. Implement JIRA service integration
-  - [ ] 4.1 Create JIRA API client and authentication
+  - [x] 4.1 Create JIRA API client and authentication
     - Implement JIRA API client with OAuth/token authentication
     - Add error handling and retry logic for JIRA API calls
     - Write unit tests for JIRA client functionality
     - _Requirements: 2.1, 2.2_
 
-  - [ ] 4.2 Implement ticket synchronization and blocker detection
-    - Code methods to sync ticket status and progress from JIRA
-    - Implement blocker detection logic based on ticket age and status
-    - Create database operations for storing ticket data and blocker flags
+  - [-] 4.2 Implement ticket synchronization and blocker detection
+    - Code methods to sync ticket status and progress from JIRA to Supabase
+    - Implement blocker detection logic: tickets stuck in same status ≥7 days (medium severity), ≥14 days (high severity)
+    - Detect tickets with no updates for ≥7 days (medium), ≥14 days (high severity)
+    - Flag tickets with blocking statuses: "blocked", "impediment", "waiting", "on hold", "pending", "suspended"
+    - Create database operations for storing ticket data and blocker flags in Supabase
     - Write tests for ticket sync and blocker detection algorithms
     - _Requirements: 2.1, 2.2, 2.4_
 
-  - [ ] 4.3 Add sprint tracking and velocity analysis
-    - Implement sprint data retrieval and progress tracking
-    - Create velocity calculation methods based on completed story points
-    - Write tests for sprint analysis and velocity metrics
-    - _Requirements: 2.3, 5.4_
+  - [x] 4.3 Implement GitHub to JIRA integration for PR management
+    - Create methods to automatically create JIRA tickets when PRs are opened
+    - Implement PR-to-ticket linking and status synchronization (PR merged → ticket resolved)
+    - Add logic to update JIRA ticket status based on PR review states (approved, changes requested)
+    - Create webhook handlers for GitHub PR events (opened, closed, merged, review_submitted)
+    - Write tests for GitHub-JIRA integration workflow
+    - _Requirements: 1.1, 2.1, 2.2_
 
 - [ ] 5. Implement Slack service integration
   - [ ] 5.1 Create Slack API client and message formatting

@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     jira_url: Optional[str] = Field(default=None, env="JIRA_URL")
     jira_username: Optional[str] = Field(default=None, env="JIRA_USERNAME")
     jira_token: Optional[str] = Field(default=None, env="JIRA_TOKEN")
+    jira_project_key: str = Field(default="DP", env="JIRA_PROJECT_KEY")
 
     # Slack settings
     slack_bot_token: Optional[str] = Field(default=None, env="SLACK_BOT_TOKEN")
