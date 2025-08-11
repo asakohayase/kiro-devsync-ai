@@ -1,7 +1,7 @@
 """API routes for DevSync AI."""
 
 import os
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from typing import Dict, Any
 
@@ -190,11 +190,25 @@ async def get_weekly_changelog(
 
 @api_router.post("/webhooks/github")
 async def github_webhook_handler(
-    payload: Dict[str, Any],
+    request: Request,
 ) -> Dict[str, Any]:
     """Handle GitHub webhook events for JIRA integration."""
     try:
         from devsync_ai.services.jira import JiraService
+        import json
+
+        # Get the raw body and parse it
+        body = await request.body()
+
+        # GitHub sends form-encoded data, so we need to parse it
+        if request.headers.get("content-type") == "application/x-www-form-urlencoded":
+            # Parse form data - GitHub sends JSON in 'payload' field
+            form_data = await request.form()
+            payload_str = form_data.get("payload", "{}")
+            payload = json.loads(payload_str)
+        else:
+            # Handle JSON directly
+            payload = json.loads(body.decode())
 
         # Extract event type and action
         event_type = payload.get("action", "unknown")
