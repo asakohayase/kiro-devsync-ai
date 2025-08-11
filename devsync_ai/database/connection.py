@@ -1,176 +1,299 @@
 """
-Supabase database connection management.
+Full-featured Supabase database connection using HTTP API.
 
-This module provides utilities for connecting to and managing the Supabase database.
-Based on the official Supabase Python client documentation.
+This module provides a complete Supabase client implementation using direct HTTP requests
+to the PostgREST API, avoiding dependency issues with the official Supabase Python client.
 """
 
-import asyncio
+import os
 import logging
-from contextlib import asynccontextmanager
-from typing import Any, Dict, List, Optional
-
-from supabase import create_client, Client
-from pydantic_settings import BaseSettings
-
+from typing import Any, Dict, List, Optional, Union
+import httpx
 
 logger = logging.getLogger(__name__)
 
 
-class DatabaseSettings(BaseSettings):
-    """Database configuration settings."""
+class SupabaseClient:
+    """Full-featured Supabase client using direct HTTP requests with PostgREST API."""
 
-    supabase_url: str
-    supabase_key: str
+    def __init__(self):
+        self.base_url = os.getenv("SUPABASE_URL")
+        self.api_key = os.getenv("SUPABASE_KEY")
 
-    class Config:
-        env_file = ".env"
-        extra = "ignore"  # Ignore extra fields from .env file
+        if not self.base_url or not self.api_key:
+            raise ValueError("SUPABASE_URL and SUPABASE_KEY environment variables are required")
 
+        self.headers = {
+            "apikey": self.api_key,
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+            "Prefer": "return=representation",
+        }
 
-class DatabaseConnection:
-    """Manages Supabase database connections and operations."""
+    async def insert(
+        self, table: str, data: Union[Dict[str, Any], List[Dict[str, Any]]]
+    ) -> List[Dict[str, Any]]:
+        """Insert data into a table."""
+        url = f"{self.base_url}/rest/v1/{table}"
 
-    def __init__(self, settings: Optional[DatabaseSettings] = None):
-        """Initialize database connection manager."""
-        self.settings = settings or DatabaseSettings()
-        self._client: Optional[Client] = None
-        self._connection_lock = asyncio.Lock()
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.post(url, headers=self.headers, json=data, timeout=30.0)
 
-    async def connect(self) -> Client:
-        """Establish connection to Supabase."""
-        async with self._connection_lock:
-            if self._client is None:
-                try:
-                    # Create Supabase client with minimal options to avoid compatibility issues
-                    self._client = create_client(
-                        supabase_url=self.settings.supabase_url,
-                        supabase_key=self.settings.supabase_key,
-                    )
-                    logger.info("Successfully connected to Supabase database")
-                except Exception as e:
-                    logger.error(f"Failed to connect to Supabase: {e}")
-                    raise DatabaseConnectionError(f"Database connection failed: {e}")
+                if response.status_code in [200, 201]:
+                    return response.json()
+                else:
+                    logger.error(f"Insert failed: {response.status_code} - {response.text}")
+                    raise Exception(f"HTTP {response.status_code}: {response.text}")
 
-            return self._client
+            except Exception as e:
+                logger.error(f"Insert error: {e}")
+                raise
 
-    async def disconnect(self):
-        """Close database connection."""
-        async with self._connection_lock:
-            if self._client:
-                # Supabase client doesn't need explicit disconnection
-                self._client = None
-                logger.info("Disconnected from Supabase database")
+    async def select(
+        self,
+        table: str,
+        filters: Optional[Dict[str, Any]] = None,
+        select_fields: str = "*",
+        limit: Optional[int] = None,
+        offset: Optional[int] = None,
+        order_by: Optional[str] = None,
+        order_desc: bool = False,
+        range_start: Optional[int] = None,
+        range_end: Optional[int] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Select data from a table with full PostgREST query capabilities.
+
+        Args:
+            table: Table name
+            filters: Dictionary of column filters (supports eq, neq, gt, gte, lt, lte, like, ilike, in, is)
+            select_fields: Comma-separated list of fields to select
+            limit: Maximum number of rows to return
+            offset: Number of rows to skip
+            order_by: Column to order by
+            order_desc: Whether to order in descending order
+            range_start: Start of range for pagination (alternative to offset)
+            range_end: End of range for pagination
+
+        Returns:
+            List of dictionaries representing rows
+        """
+        url = f"{self.base_url}/rest/v1/{table}"
+        headers = self.headers.copy()
+        params = {"select": select_fields}
+
+        # Add filters with proper PostgREST operators
+        if filters:
+            for key, value in filters.items():
+                if isinstance(value, dict):
+                    # Handle complex filters like {"gt": 10} or {"in": ["a", "b"]}
+                    for op, val in value.items():
+                        if op == "in" and isinstance(val, list):
+                            params[key] = f"in.({','.join(map(str, val))})"
+                        else:
+                            params[key] = f"{op}.{val}"
+                else:
+                    # Simple equality filter
+                    params[key] = f"eq.{value}"
+
+        # Add limit
+        if limit:
+            params["limit"] = str(limit)
+
+        # Add offset
+        if offset:
+            params["offset"] = str(offset)
+
+        # Add ordering
+        if order_by:
+            order_param = f"{order_by}.{'desc' if order_desc else 'asc'}"
+            params["order"] = order_param
+
+        # Add range headers for pagination
+        if range_start is not None and range_end is not None:
+            headers["Range"] = f"{range_start}-{range_end}"
+
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.get(url, headers=headers, params=params, timeout=30.0)
+
+                if response.status_code == 200:
+                    return response.json()
+                else:
+                    logger.error(f"Select failed: {response.status_code} - {response.text}")
+                    raise Exception(f"HTTP {response.status_code}: {response.text}")
+
+            except Exception as e:
+                logger.error(f"Select error: {e}")
+                raise
+
+    async def update(
+        self, table: str, data: Dict[str, Any], filters: Dict[str, Any]
+    ) -> List[Dict[str, Any]]:
+        """Update data in a table."""
+        url = f"{self.base_url}/rest/v1/{table}"
+
+        params = {}
+        for key, value in filters.items():
+            if isinstance(value, dict):
+                for op, val in value.items():
+                    params[key] = f"{op}.{val}"
+            else:
+                params[key] = f"eq.{value}"
+
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.patch(
+                    url, headers=self.headers, params=params, json=data, timeout=30.0
+                )
+
+                if response.status_code in [200, 204]:
+                    return response.json() if response.content else []
+                else:
+                    logger.error(f"Update failed: {response.status_code} - {response.text}")
+                    raise Exception(f"HTTP {response.status_code}: {response.text}")
+
+            except Exception as e:
+                logger.error(f"Update error: {e}")
+                raise
+
+    async def delete(self, table: str, filters: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Delete data from a table."""
+        url = f"{self.base_url}/rest/v1/{table}"
+
+        params = {}
+        for key, value in filters.items():
+            if isinstance(value, dict):
+                for op, val in value.items():
+                    params[key] = f"{op}.{val}"
+            else:
+                params[key] = f"eq.{value}"
+
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.delete(
+                    url, headers=self.headers, params=params, timeout=30.0
+                )
+
+                if response.status_code in [200, 204]:
+                    return response.json() if response.content else []
+                else:
+                    logger.error(f"Delete failed: {response.status_code} - {response.text}")
+                    raise Exception(f"HTTP {response.status_code}: {response.text}")
+
+            except Exception as e:
+                logger.error(f"Delete error: {e}")
+                raise
+
+    async def upsert(
+        self, table: str, data: Union[Dict[str, Any], List[Dict[str, Any]]], on_conflict: str = None
+    ) -> List[Dict[str, Any]]:
+        """Insert or update data (upsert)."""
+        url = f"{self.base_url}/rest/v1/{table}"
+        headers = self.headers.copy()
+
+        if on_conflict:
+            headers["Prefer"] = f"resolution=merge-duplicates,return=representation"
+        else:
+            headers["Prefer"] = "return=representation"
+
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.post(url, headers=headers, json=data, timeout=30.0)
+
+                if response.status_code in [200, 201]:
+                    return response.json()
+                else:
+                    logger.error(f"Upsert failed: {response.status_code} - {response.text}")
+                    raise Exception(f"HTTP {response.status_code}: {response.text}")
+
+            except Exception as e:
+                logger.error(f"Upsert error: {e}")
+                raise
+
+    async def count(self, table: str, filters: Optional[Dict[str, Any]] = None) -> int:
+        """Count rows in a table."""
+        url = f"{self.base_url}/rest/v1/{table}"
+        headers = self.headers.copy()
+        headers["Prefer"] = "count=exact"
+
+        params = {"select": "count"}
+
+        if filters:
+            for key, value in filters.items():
+                if isinstance(value, dict):
+                    for op, val in value.items():
+                        params[key] = f"{op}.{val}"
+                else:
+                    params[key] = f"eq.{value}"
+
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.head(url, headers=headers, params=params, timeout=30.0)
+
+                if response.status_code == 200:
+                    content_range = response.headers.get("content-range", "")
+                    if content_range:
+                        # Parse "0-24/25" format
+                        total = content_range.split("/")[-1]
+                        return int(total) if total != "*" else 0
+                    return 0
+                else:
+                    logger.error(f"Count failed: {response.status_code}")
+                    raise Exception(f"HTTP {response.status_code}")
+
+            except Exception as e:
+                logger.error(f"Count error: {e}")
+                raise
+
+    async def execute_rpc(self, function_name: str, params: Optional[Dict[str, Any]] = None) -> Any:
+        """Execute a stored procedure/function."""
+        url = f"{self.base_url}/rest/v1/rpc/{function_name}"
+
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.post(
+                    url, headers=self.headers, json=params or {}, timeout=30.0
+                )
+
+                if response.status_code == 200:
+                    return response.json()
+                else:
+                    logger.error(f"RPC failed: {response.status_code} - {response.text}")
+                    raise Exception(f"HTTP {response.status_code}: {response.text}")
+
+            except Exception as e:
+                logger.error(f"RPC error: {e}")
+                raise
 
     async def health_check(self) -> bool:
         """Check if database connection is healthy."""
         try:
-            client = await self.connect()
             # Simple query to test connection
-            result = (
-                client.table("information_schema.tables").select("table_name").limit(1).execute()
+            result = await self.select(
+                "information_schema.tables", filters={"table_schema": "public"}, limit=1
             )
-            return result.data is not None
+            return len(result) >= 0  # Even empty result means connection works
         except Exception as e:
             logger.error(f"Database health check failed: {e}")
             return False
 
-    @asynccontextmanager
-    async def get_client(self):
-        """Context manager for database operations."""
-        client = await self.connect()
-        try:
-            yield client
-        except Exception as e:
-            logger.error(f"Database operation failed: {e}")
-            raise
-
-    async def execute_query(
-        self,
-        table: str,
-        operation: str,
-        data: Optional[Dict[str, Any]] = None,
-        filters: Optional[Dict[str, Any]] = None,
-        select_fields: str = "*",
-    ) -> Dict[str, Any]:
-        """Execute a database query with error handling."""
-        async with self.get_client() as client:
-            try:
-                query = client.table(table)
-
-                if operation == "select":
-                    query = query.select(select_fields)
-                    if filters:
-                        for key, value in filters.items():
-                            query = query.eq(key, value)
-                    result = query.execute()
-
-                elif operation == "insert":
-                    if not data:
-                        raise ValueError("Data required for insert operation")
-                    result = query.insert(data).execute()
-
-                elif operation == "update":
-                    if not data or not filters:
-                        raise ValueError("Data and filters required for update operation")
-                    query = query.update(data)
-                    for key, value in filters.items():
-                        query = query.eq(key, value)
-                    result = query.execute()
-
-                elif operation == "delete":
-                    if not filters:
-                        raise ValueError("Filters required for delete operation")
-                    for key, value in filters.items():
-                        query = query.eq(key, value)
-                    result = query.delete().execute()
-
-                else:
-                    raise ValueError(f"Unsupported operation: {operation}")
-
-                return {"success": True, "data": result.data, "count": result.count}
-
-            except Exception as e:
-                logger.error(f"Query execution failed: {e}")
-                return {"success": False, "error": str(e), "data": None, "count": 0}
-
-    async def execute_raw_sql(self, sql: str, params: Optional[List[Any]] = None) -> Dict[str, Any]:
-        """Execute raw SQL query (for migrations and complex operations)."""
-        async with self.get_client() as client:
-            try:
-                # Note: Supabase Python client doesn't directly support raw SQL
-                # This would typically be done through the REST API or a direct PostgreSQL connection
-                # For now, we'll raise an error indicating this needs to be implemented
-                raise NotImplementedError(
-                    "Raw SQL execution requires direct PostgreSQL connection. "
-                    "Use migration scripts or Supabase dashboard for schema changes."
-                )
-            except Exception as e:
-                logger.error(f"Raw SQL execution failed: {e}")
-                return {"success": False, "error": str(e), "data": None}
-
-
-class DatabaseConnectionError(Exception):
-    """Custom exception for database connection errors."""
-
-    pass
-
 
 # Global database connection instance
-_db_connection: Optional[DatabaseConnection] = None
+_db_client: Optional[SupabaseClient] = None
 
 
-async def get_database() -> DatabaseConnection:
-    """Get the global database connection instance."""
-    global _db_connection
-    if _db_connection is None:
-        _db_connection = DatabaseConnection()
-    return _db_connection
+async def get_database() -> SupabaseClient:
+    """Get the global database client instance."""
+    global _db_client
+    if _db_client is None:
+        _db_client = SupabaseClient()
+    return _db_client
 
 
 async def close_database():
     """Close the global database connection."""
-    global _db_connection
-    if _db_connection:
-        await _db_connection.disconnect()
-        _db_connection = None
+    global _db_client
+    if _db_client:
+        _db_client = None
