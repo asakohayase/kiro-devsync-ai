@@ -6,6 +6,18 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Optional, Any
 from dataclasses import dataclass
 
+# Fix for Python 3.13+ compatibility with JIRA library
+try:
+    import imghdr
+except ImportError:
+    # Create a minimal imghdr module for compatibility
+    import sys
+    from types import ModuleType
+
+    imghdr = ModuleType("imghdr")
+    imghdr.what = lambda file, h=None: None
+    sys.modules["imghdr"] = imghdr
+
 from jira import JIRA, JIRAError
 from jira.resources import Issue, Sprint, Project
 
