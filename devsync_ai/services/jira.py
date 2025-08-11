@@ -1138,12 +1138,15 @@ GitHub Pull Request linked to this ticket:
     ) -> Optional[str]:
         """Create a JIRA ticket from a GitHub PR."""
         try:
-            # Extract PR information
-            pr_number = pr_data.get("number")
-            pr_title = pr_data.get("title", "Unknown PR")
-            pr_body = pr_data.get("body", "")
-            pr_author = pr_data.get("user", {}).get("login", "Unknown")
-            pr_url = pr_data.get("html_url", "")
+            # Extract PR information from webhook payload
+            # GitHub webhook has PR data in different locations depending on the payload structure
+            pr_info = pr_data.get("pull_request", pr_data)  # Handle both webhook and direct PR data
+
+            pr_number = pr_data.get("number") or pr_info.get("number")
+            pr_title = pr_info.get("title", "Unknown PR")
+            pr_body = pr_info.get("body", "")
+            pr_author = pr_info.get("user", {}).get("login", "Unknown")
+            pr_url = pr_info.get("html_url", "")
 
             # Create ticket summary and description
             summary = f"PR #{pr_number}: {pr_title}"
