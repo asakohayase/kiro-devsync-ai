@@ -1,6 +1,7 @@
 """API routes for DevSync AI."""
 
 import os
+import logging
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from typing import Dict, Any
@@ -196,22 +197,42 @@ async def github_webhook_handler(
     try:
         from devsync_ai.services.jira import JiraService
         import json
+        import logging
+
+        logger = logging.getLogger(__name__)
+        logger.info(f"Received webhook: {request.headers.get('x-github-event')}")
 
         # Get the raw body and parse it
         body = await request.body()
+        content_type = request.headers.get("content-type", "")
+
+        logger.info(f"Content-Type: {content_type}")
+        logger.info(f"Body length: {len(body)}")
 
         # GitHub sends form-encoded data, so we need to parse it
-        if request.headers.get("content-type") == "application/x-www-form-urlencoded":
+        if "application/x-www-form-urlencoded" in content_type:
             # Parse form data - GitHub sends JSON in 'payload' field
-            form_data = await request.form()
-            payload_str = form_data.get("payload", "{}")
-            payload = json.loads(payload_str)
+            body_str = body.decode("utf-8")
+            # Simple parsing for payload=<json>
+            if body_str.startswith("payload="):
+                payload_str = body_str[8:]  # Remove 'payload='
+                # URL decode the payload
+                import urllib.parse
+
+                payload_str = urllib.parse.unquote_plus(payload_str)
+                payload = json.loads(payload_str)
+            else:
+                logger.error(f"Unexpected form data format: {body_str[:100]}")
+                raise HTTPException(status_code=400, detail="Invalid form data format")
         else:
             # Handle JSON directly
             payload = json.loads(body.decode())
 
+        logger.info(f"Parsed payload keys: {list(payload.keys())}")
+
         # Extract event type and action
         event_type = payload.get("action", "unknown")
+        logger.info(f"Event type: {event_type}")
 
         # Handle pull request events
         if "pull_request" in payload:
