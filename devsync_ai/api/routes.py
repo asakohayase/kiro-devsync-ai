@@ -2,9 +2,9 @@
 
 import os
 import logging
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Form
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 from devsync_ai.config import settings
 
@@ -191,7 +191,7 @@ async def get_weekly_changelog(
 
 @api_router.post("/webhooks/github")
 async def github_webhook_handler(
-    request: Request,
+    request: Request, payload: Optional[str] = Form(None)
 ) -> Dict[str, Any]:
     """Handle GitHub webhook events for JIRA integration."""
     try:
@@ -202,45 +202,30 @@ async def github_webhook_handler(
         logger = logging.getLogger(__name__)
         logger.info(f"Received webhook: {request.headers.get('x-github-event')}")
 
-        # Get the raw body and parse it
-        body = await request.body()
-        content_type = request.headers.get("content-type", "")
-
-        logger.info(f"Content-Type: {content_type}")
-        logger.info(f"Body length: {len(body)}")
-
-        # GitHub sends form-encoded data, so we need to parse it
-        if "application/x-www-form-urlencoded" in content_type:
-            # Parse form data - GitHub sends JSON in 'payload' field
-            body_str = body.decode("utf-8")
-            # Simple parsing for payload=<json>
-            if body_str.startswith("payload="):
-                payload_str = body_str[8:]  # Remove 'payload='
-                # URL decode the payload
-                import urllib.parse
-
-                payload_str = urllib.parse.unquote_plus(payload_str)
-                payload = json.loads(payload_str)
-            else:
-                logger.error(f"Unexpected form data format: {body_str[:100]}")
-                raise HTTPException(status_code=400, detail="Invalid form data format")
+        # Parse the payload
+        if payload:
+            # Form-encoded data
+            logger.info("Parsing form-encoded payload")
+            webhook_data = json.loads(payload)
         else:
-            # Handle JSON directly
-            payload = json.loads(body.decode())
+            # Try JSON body
+            logger.info("Parsing JSON body")
+            body = await request.body()
+            webhook_data = json.loads(body.decode())
 
-        logger.info(f"Parsed payload keys: {list(payload.keys())}")
+        logger.info(f"Parsed payload keys: {list(webhook_data.keys())}")
 
         # Extract event type and action
-        event_type = payload.get("action", "unknown")
+        event_type = webhook_data.get("action", "unknown")
         logger.info(f"Event type: {event_type}")
 
         # Handle pull request events
-        if "pull_request" in payload:
-            return await handle_pr_webhook(payload, event_type)
+        if "pull_request" in webhook_data:
+            return await handle_pr_webhook(webhook_data, event_type)
 
         # Handle pull request review events
-        elif "review" in payload:
-            return await handle_pr_review_webhook(payload, event_type)
+        elif "review" in webhook_data:
+            return await handle_pr_review_webhook(webhook_data, event_type)
 
         else:
             return {"message": f"Unhandled webhook event type: {event_type}"}
