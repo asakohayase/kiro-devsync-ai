@@ -22,7 +22,7 @@ dependencies = [
     # GitHub integration
     "PyGithub==2.1.1",
     # JIRA integration
-    "jira==3.5.2",
+    "jira==3.8.0",
     # Slack integration
     "slack-sdk==3.26.1",
     # Scheduling
