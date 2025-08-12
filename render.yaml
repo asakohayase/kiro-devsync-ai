@@ -2,6 +2,7 @@ services:
   - type: web
     name: devsync-ai
     env: python
+    runtime: python-3.12
     buildCommand: "pip install --upgrade pip setuptools wheel && pip install --no-cache-dir --only-binary=:all: --prefer-binary --no-build-isolation -r requirements.txt"
     startCommand: "uvicorn devsync_ai.main:app --host 0.0.0.0 --port $PORT"
     envVars:
@@ -17,3 +18,15 @@ services:
         value: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBia21idnZxampnbHZ1b2lsYnd1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQzMzQ3NzcsImV4cCI6MjA2OTkxMDc3N30.3Sd7IFUDbJ78J4tSfceBgl2SLHV9_Pois3sgAkmOqfQ
       - key: REDIS_URL
         value: redis://localhost:6379
+      - key: JIRA_URL
+        value: https://kiro-devsync-ai.atlassian.net/
+      - key: JIRA_USERNAME
+        value: asako.ch.ha@gmail.com
+      - key: JIRA_TOKEN
+        value: ATATT3xFfGF0DmQH8-j_g58u8e5kkBsQWYTPHE_HadBVjRgls-H0ZsyXibe1TtHRLaUxV2Hs-ptaUUXrwVYtdvrOLRSNICz1OY-2JqLSNK_jWMssWc3nND0wTipL1CdrR5KiatoL9XJmXfUitFE68rtdOmOK3KavTnIbN0e_KLN4WSkZIDSsg8Y=F05783A1
+      - key: JIRA_PROJECT_KEY
+        value: DP
+      - key: GITHUB_TOKEN
+        value: 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
+      - key: GITHUB_WEBHOOK_SECRET
+        value: 0de4836d22ee0760a1931983c5bd6c7f237107e7b95d1dda19a5ab928a93ae70

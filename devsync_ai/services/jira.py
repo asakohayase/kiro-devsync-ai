@@ -1207,11 +1207,17 @@ This ticket was automatically created from GitHub PR #{pr_number}.
             pr_state = pr_data.get("state", "open")
             pr_merged = pr_data.get("merged", False)
 
+            logger.info(
+                f"Processing PR #{pr_number}: action={action}, state={pr_state}, merged={pr_merged}"
+            )
+
             # Find the associated JIRA ticket
             ticket_key = await self._get_ticket_for_pr(pr_number)
             if not ticket_key:
                 logger.warning(f"No JIRA ticket found for PR #{pr_number}")
                 return False
+
+            logger.info(f"Found JIRA ticket {ticket_key} for PR #{pr_number}")
 
             # Determine the target status based on PR state and action
             target_status = None
@@ -1219,24 +1225,34 @@ This ticket was automatically created from GitHub PR #{pr_number}.
             if action == "closed" and pr_merged:
                 target_status = "Done"  # PR was merged
             elif action == "closed" and not pr_merged:
-                target_status = "Cancelled"  # PR was closed without merging
+                target_status = "Done"  # PR was closed without merging - still mark as Done since no "Cancelled" status
             elif action == "reopened":
                 target_status = "In Progress"  # PR was reopened
             elif action == "ready_for_review":
                 target_status = "In Review"  # PR is ready for review
 
+            logger.info(f"Target status for PR #{pr_number}: {target_status}")
+
             if target_status:
                 success = await self._transition_ticket_status(ticket_key, target_status)
                 if success:
                     logger.info(
-                        f"Updated JIRA ticket {ticket_key} to '{target_status}' for PR #{pr_number}"
+                        f"✅ Updated JIRA ticket {ticket_key} to '{target_status}' for PR #{pr_number}"
+                    )
+                else:
+                    logger.error(
+                        f"❌ Failed to update JIRA ticket {ticket_key} to '{target_status}' for PR #{pr_number}"
                     )
                 return success
 
+            logger.info(f"No status change needed for PR #{pr_number}")
             return True  # No status change needed
 
         except Exception as e:
             logger.error(f"Failed to update JIRA ticket for PR #{pr_number}: {e}")
+            import traceback
+
+            logger.error(f"Traceback: {traceback.format_exc()}")
             return False
 
     async def update_ticket_from_pr_review(
@@ -1317,8 +1333,9 @@ This ticket was automatically created from GitHub PR #{pr_number}.
                 select_fields="ticket_key",
             )
 
-            if result["success"] and result["data"]:
-                return result["data"][0]["ticket_key"]
+            # SupabaseClient.select returns List[Dict] directly
+            if result and len(result) > 0:
+                return result[0]["ticket_key"]
 
             return None
 
@@ -1331,9 +1348,19 @@ This ticket was automatically created from GitHub PR #{pr_number}.
         try:
             # Get the issue
             issue = await self._execute_with_retry(self.jira_client.issue, ticket_key)
+            current_status = issue.fields.status.name
+            logger.info(f"Current status of {ticket_key}: {current_status}")
+
+            # If already in target status, no need to transition
+            if current_status.lower() == target_status.lower():
+                logger.info(f"Ticket {ticket_key} already in '{target_status}' status")
+                return True
 
             # Get available transitions
             transitions = await self._execute_with_retry(self.jira_client.transitions, issue)
+            logger.info(
+                f"Available transitions for {ticket_key}: {[t['name'] + ' → ' + t['to']['name'] for t in transitions]}"
+            )
 
             # Find the transition that leads to the target status
             target_transition = None
@@ -1343,19 +1370,33 @@ This ticket was automatically created from GitHub PR #{pr_number}.
                     break
 
             if not target_transition:
-                logger.warning(f"No transition found to '{target_status}' for ticket {ticket_key}")
+                logger.warning(
+                    f"❌ No transition found to '{target_status}' for ticket {ticket_key}"
+                )
+                logger.warning(
+                    f"Available target statuses: {[t['to']['name'] for t in transitions]}"
+                )
                 return False
+
+            logger.info(
+                f"Using transition: {target_transition['name']} → {target_transition['to']['name']}"
+            )
 
             # Perform the transition
             await self._execute_with_retry(
                 self.jira_client.transition_issue, issue, target_transition["id"]
             )
 
-            logger.info(f"Transitioned ticket {ticket_key} to '{target_status}'")
+            logger.info(
+                f"✅ Transitioned ticket {ticket_key} from '{current_status}' to '{target_status}'"
+            )
             return True
 
         except Exception as e:
-            logger.error(f"Failed to transition ticket {ticket_key} to '{target_status}': {e}")
+            logger.error(f"❌ Failed to transition ticket {ticket_key} to '{target_status}': {e}")
+            import traceback
+
+            logger.error(f"Traceback: {traceback.format_exc()}")
             return False
 
     async def _add_comment_to_ticket(self, ticket_key: str, comment_text: str) -> bool:

@@ -9,6 +9,13 @@ env/
 venv/
 .venv/
 
+# Kiro IDE sensitive configurations
+.kiro/settings/mcp.json
+.kiro/steering/*credentials*
+.kiro/steering/*secrets*
+.kiro/steering/*keys*
+.kiro/steering/*tokens*
+
 # IDE
 .vscode/
 .idea/
