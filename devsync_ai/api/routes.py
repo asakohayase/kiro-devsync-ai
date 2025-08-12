@@ -241,13 +241,13 @@ async def github_webhook_handler(
         event_type = webhook_data.get("action", "unknown")
         logger.info(f"GitHub event: {github_event}, Action: {event_type}")
 
-        # Handle pull request events
-        if "pull_request" in webhook_data:
-            return await handle_pr_webhook(webhook_data, event_type)
-
-        # Handle pull request review events
-        elif "review" in webhook_data:
+        # Handle pull request review events FIRST (they also contain pull_request data)
+        if "review" in webhook_data and github_event == "pull_request_review":
             return await handle_pr_review_webhook(webhook_data, event_type)
+
+        # Handle pull request events
+        elif "pull_request" in webhook_data and github_event == "pull_request":
+            return await handle_pr_webhook(webhook_data, event_type)
 
         else:
             # Return success for unhandled events to prevent retries
