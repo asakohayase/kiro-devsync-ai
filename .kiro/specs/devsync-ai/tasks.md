@@ -18,6 +18,11 @@
     - Create database migration scripts for all tables
     - Implement database connection utilities with error handling
     - Write tests for database connectivity and basic operations
+    - **COMPLETED**: Configured official Supabase MCP server for database operations
+      - Added Personal Access Token (PAT) to environment variables
+      - Configured MCP server with project-ref for cloud database access
+      - Replaced custom MCP implementation with official @supabase/mcp-server-supabase
+      - Official server provides superior capabilities: full SQL execution, migrations, table operations, security warnings
     - _Requirements: 6.1, 6.3_
 
 - [x] 3. Implement GitHub service integration
