@@ -1,0 +1,50 @@
+{
+  "timestamp": "2025-08-13T04:02:02.278189",
+  "test_results": [
+    {
+      "name": "PR Update",
+      "success": true,
+      "processing_time_ms": 0.17404556274414062,
+      "cache_hit": false,
+      "block_count": 7,
+      "error": null
+    },
+    {
+      "name": "JIRA Update",
+      "success": true,
+      "processing_time_ms": 0.12373924255371094,
+      "cache_hit": false,
+      "block_count": 6,
+      "error": null
+    },
+    {
+      "name": "Standup",
+      "success": true,
+      "processing_time_ms": 0.08606910705566406,
+      "cache_hit": false,
+      "block_count": 6,
+      "error": null
+    },
+    {
+      "name": "Blocker",
+      "success": true,
+      "processing_time_ms": 0.141143798828125,
+      "cache_hit": false,
+      "block_count": 2,
+      "error": null
+    }
+  ],
+  "metrics": {
+    "total_messages": 4,
+    "cache_hit_rate": 0.0,
+    "error_rate": 0.0,
+    "avg_processing_time_ms": 0.12725,
+    "formatter_usage": {
+      "PRMessageFormatter": 1,
+      "JIRAMessageFormatter": 1,
+      "StandupMessageFormatter": 1,
+      "BlockerMessageFormatter": 1
+    },
+    "cache_size": 4
+  }
+}

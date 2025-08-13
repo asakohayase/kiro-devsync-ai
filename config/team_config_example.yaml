@@ -1,0 +1,227 @@
+# DevSync AI Team Configuration Example
+# This file demonstrates the flexible configuration system for team customization
+
+version: "1.0.0"
+environment: "production"
+migration_version: 2
+
+# Team-wide settings
+team_settings:
+  team_id: "engineering"
+  team_name: "Engineering Team"
+  timezone: "America/New_York"
+  default_formatting: "rich"
+  
+  # Business hours for notification scheduling
+  business_hours:
+    start: "09:00"
+    end: "17:00"
+    days: ["monday", "tuesday", "wednesday", "thursday", "friday"]
+  
+  # Visual styling configuration
+  visual_styling:
+    brand_color: "#1f77b4"        # Primary brand color (hex format)
+    secondary_color: "#ff7f0e"    # Secondary accent color
+    success_color: "#2ca02c"      # Success/positive actions
+    warning_color: "#ff7f0e"      # Warnings and cautions
+    error_color: "#d62728"        # Errors and critical issues
+    emoji_style: "standard"       # Options: standard, custom, minimal, none
+    message_density: "detailed"   # Options: compact, detailed, minimal
+    show_avatars: true
+    show_timestamps: true
+    compact_mode: false
+    
+    # Custom emoji mappings (when emoji_style is "custom")
+    custom_emojis:
+      success: ":white_check_mark:"
+      warning: ":warning:"
+      error: ":x:"
+      info: ":information_source:"
+      pr_new: ":new:"
+      pr_merged: ":heavy_check_mark:"
+      bug: ":bug:"
+      feature: ":sparkles:"
+  
+  # Message content preferences
+  content_preferences:
+    show_technical_details: true
+    show_file_changes: true
+    show_ci_status: true
+    show_review_comments: true
+    max_description_length: 500
+    max_commit_messages: 5
+    include_diff_stats: true
+    show_branch_info: true
+    highlight_breaking_changes: true
+    show_deployment_status: true
+  
+  # Interactive element settings
+  interactive_settings:
+    interactive_mode: true
+    show_action_buttons: true
+    enable_quick_actions: true
+    show_expandable_sections: true
+    enable_threading: true
+    show_external_links: true
+    confirmation_level: "standard"  # Options: none, standard, detailed
+    button_style: "default"         # Options: default, minimal, prominent
+
+# Channel-specific overrides
+channel_overrides:
+  "#development":
+    channel_id: "#development"
+    formatting_style: "rich"
+    show_technical_details: true
+    batch_threshold: 3
+    interactive_elements: true
+    custom_branding:
+      icon: ":gear:"
+      color: "#2196f3"
+    notification_preferences:
+      priority: "high"
+      frequency: "all"
+  
+  "#management":
+    channel_id: "#management"
+    formatting_style: "simple"
+    high_level_summary: true
+    hide_technical_details: true
+    batch_threshold: 10
+    interactive_elements: false
+    custom_branding:
+      icon: ":chart_with_upwards_trend:"
+      color: "#4caf50"
+    notification_preferences:
+      priority: "medium"
+      frequency: "summary"
+  
+  "#alerts":
+    channel_id: "#alerts"
+    formatting_style: "plain"
+    message_density: "minimal"
+    batch_threshold: 1
+    interactive_elements: true
+    notification_preferences:
+      priority: "critical"
+      frequency: "immediate"
+  
+  "#random":
+    channel_id: "#random"
+    formatting_style: "simple"
+    message_density: "compact"
+    batch_threshold: 20
+    interactive_elements: false
+
+# User personal preferences
+user_preferences:
+  "alice":
+    user_id: "alice"
+    timezone: "America/Los_Angeles"
+    date_format: "%Y-%m-%d"
+    time_format: "%H:%M:%S"
+    notification_frequency: "verbose"
+    preferred_density: "detailed"
+    show_personal_mentions: true
+    highlight_assigned_items: true
+    custom_keywords: ["security", "performance", "bug", "critical"]
+    mute_channels: []
+    priority_channels: ["#alerts", "#security", "#incidents"]
+  
+  "bob":
+    user_id: "bob"
+    timezone: "Europe/London"
+    date_format: "%d/%m/%Y"
+    time_format: "%H:%M"
+    notification_frequency: "minimal"
+    preferred_density: "compact"
+    show_personal_mentions: false
+    highlight_assigned_items: true
+    custom_keywords: ["deployment", "release"]
+    mute_channels: ["#random", "#general"]
+    priority_channels: ["#releases"]
+  
+  "carol":
+    user_id: "carol"
+    timezone: "Asia/Tokyo"
+    date_format: "%Y年%m月%d日"
+    time_format: "%H:%M"
+    notification_frequency: "normal"
+    preferred_density: "detailed"
+    show_personal_mentions: true
+    highlight_assigned_items: true
+    custom_keywords: ["frontend", "ui", "ux"]
+    priority_channels: ["#frontend", "#design"]
+
+# Message template configurations
+message_templates:
+  pr_update:
+    template_type: "pr_update"
+    enabled: true
+    show_file_changes: true
+    show_ci_status: true
+    show_review_status: true
+    max_description_length: 300
+    include_author_info: true
+    show_labels: true
+    show_milestone: true
+    custom_fields:
+      show_diff_stats: true
+      highlight_conflicts: true
+      show_deployment_status: true
+      include_test_results: true
+  
+  jira_update:
+    template_type: "jira_update"
+    enabled: true
+    show_file_changes: false
+    show_ci_status: false
+    max_description_length: 200
+    include_author_info: true
+    show_labels: true
+    show_milestone: true
+    custom_fields:
+      show_story_points: true
+      show_epic_link: true
+      show_sprint_info: true
+      highlight_blockers: true
+  
+  standup:
+    template_type: "standup"
+    enabled: true
+    max_description_length: 150
+    include_author_info: true
+    custom_fields:
+      show_velocity: true
+      show_burndown: true
+      highlight_blockers: true
+      show_team_health: true
+  
+  alert:
+    template_type: "alert"
+    enabled: true
+    max_description_length: 500
+    include_author_info: false
+    custom_fields:
+      show_severity: true
+      show_affected_systems: true
+      enable_escalation: true
+      show_runbook_links: true
+      include_metrics: true
+  
+  deployment:
+    template_type: "deployment"
+    enabled: true
+    show_file_changes: true
+    show_ci_status: true
+    max_description_length: 400
+    include_author_info: true
+    custom_fields:
+      show_rollback_plan: true
+      show_health_checks: true
+      include_monitoring_links: true
+
+# Environment-specific settings
+# These can be overridden by environment variables with DEVSYNC_ prefix
+# Example: DEVSYNC_TEAM_SETTINGS_VISUAL_STYLING_BRAND_COLOR="#ff0000"
+
+last_updated: "2025-08-13T02:30:00Z"

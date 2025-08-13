@@ -1,0 +1,1 @@
+"""Template modules for different notification types."""

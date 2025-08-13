@@ -1,0 +1,58 @@
+channel_overrides: {}
+environment: production
+last_updated: '2025-08-13T02:59:18.495839'
+message_templates: {}
+migration_version: 2
+team_settings:
+  business_hours:
+    days:
+    - monday
+    - tuesday
+    - wednesday
+    - thursday
+    - friday
+    end: '17:00'
+    start: 09:00
+  content_preferences:
+    highlight_breaking_changes: true
+    include_diff_stats: true
+    max_commit_messages: 5
+    max_description_length: 500
+    show_branch_info: true
+    show_ci_status: true
+    show_deployment_status: true
+    show_file_changes: true
+    show_review_comments: true
+    show_technical_details: true
+  custom_fields: {}
+  default_formatting: !!python/object/apply:devsync_ai.core.config_manager.FormattingStyle
+  - rich
+  interactive_settings:
+    button_style: default
+    confirmation_level: standard
+    enable_quick_actions: true
+    enable_threading: true
+    interactive_mode: true
+    show_action_buttons: true
+    show_expandable_sections: true
+    show_external_links: true
+  team_id: support-team
+  team_name: Support Team
+  timezone: UTC
+  visual_styling:
+    brand_color: '#607d8b'
+    compact_mode: false
+    custom_emojis: {}
+    emoji_style: !!python/object/apply:devsync_ai.core.config_manager.EmojiStyle
+    - standard
+    error_color: '#d62728'
+    font_family: default
+    message_density: !!python/object/apply:devsync_ai.core.config_manager.MessageDensity
+    - detailed
+    secondary_color: '#ff7f0e'
+    show_avatars: true
+    show_timestamps: true
+    success_color: '#2ca02c'
+    warning_color: '#ff7f0e'
+user_preferences: {}
+version: 1.0.0
