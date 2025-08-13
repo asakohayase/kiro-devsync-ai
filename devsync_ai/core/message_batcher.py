@@ -146,68 +146,95 @@ class BatchConfig:
 class MessageBatcher:
     """Sophisticated message batching system."""
     
-    def __init__(self, config: Optional[BatchConfig] = None):
+    def __init__(self, config: Optional[BatchConfig] = None, formatter_factory=None):
         """Initialize message batcher."""
         self.config = config or BatchConfig()
         self.logger = logging.getLogger(__name__)
         
-        # Active batch groups
-        self._batch_groups: Dict[str, BatchGroup] = {}
+        # Channel-specific batch groups
+        self._channel_batch_groups: Dict[str, Dict[str, BatchGroup]] = defaultdict(dict)
         
         # Batch statistics
         self._stats = {
             'batches_created': 0,
             'messages_batched': 0,
             'batches_flushed': 0,
-            'similarity_matches': 0
+            'similarity_matches': 0,
+            'channels_active': 0,
+            'batches_by_channel': defaultdict(int),
+            'batches_by_type': defaultdict(int)
         }
         
         # Interactive element builder for batch messages
         self._interactive_builder = default_interactive_builder
         
+        # SlackMessageFormatterFactory integration
+        self._formatter_factory = formatter_factory
+        
         self.logger.info("MessageBatcher initialized")
     
-    def add_message(self, message: BatchableMessage) -> Optional[SlackMessage]:
+    def add_message(self, message: BatchableMessage, channel_id: str = "default") -> Optional[SlackMessage]:
         """Add message to batching system. Returns batched message if ready."""
         if not self.config.enabled:
             return None
         
-        # Find or create appropriate batch group
-        batch_group = self._find_or_create_batch_group(message)
+        # Find or create appropriate batch group for the channel
+        batch_group = self._find_or_create_batch_group(message, channel_id)
         batch_group.add_message(message)
         
         self._stats['messages_batched'] += 1
+        self._stats['batches_by_channel'][channel_id] += 1
+        
+        # Update channel count
+        if channel_id not in self._channel_batch_groups or not self._channel_batch_groups[channel_id]:
+            self._stats['channels_active'] += 1
         
         # Check if batch should be flushed
         if batch_group.should_flush(self.config.max_batch_age_minutes, self.config.max_batch_size):
-            return self._flush_batch_group(batch_group)
+            return self._flush_batch_group(batch_group, channel_id)
         
         return None
     
     def flush_all_batches(self) -> List[SlackMessage]:
-        """Flush all pending batch groups."""
+        """Flush all pending batch groups across all channels."""
         batched_messages = []
         
-        for group_id in list(self._batch_groups.keys()):
-            batch_group = self._batch_groups[group_id]
+        for channel_id in list(self._channel_batch_groups.keys()):
+            channel_batches = self.flush_channel_batches(channel_id)
+            batched_messages.extend(channel_batches)
+        
+        return batched_messages
+    
+    def flush_channel_batches(self, channel_id: str) -> List[SlackMessage]:
+        """Flush all pending batch groups for a specific channel."""
+        batched_messages = []
+        
+        if channel_id not in self._channel_batch_groups:
+            return batched_messages
+        
+        channel_groups = self._channel_batch_groups[channel_id]
+        for group_id in list(channel_groups.keys()):
+            batch_group = channel_groups[group_id]
             if batch_group.messages:  # Only flush non-empty batches
-                batched_message = self._flush_batch_group(batch_group)
+                batched_message = self._flush_batch_group(batch_group, channel_id)
                 if batched_message:
                     batched_messages.append(batched_message)
         
         return batched_messages
     
     def flush_expired_batches(self) -> List[SlackMessage]:
-        """Flush only expired batch groups."""
+        """Flush only expired batch groups across all channels."""
         batched_messages = []
         current_time = datetime.now()
         
-        for group_id in list(self._batch_groups.keys()):
-            batch_group = self._batch_groups[group_id]
-            if batch_group.should_flush(self.config.max_batch_age_minutes, self.config.max_batch_size):
-                batched_message = self._flush_batch_group(batch_group)
-                if batched_message:
-                    batched_messages.append(batched_message)
+        for channel_id in list(self._channel_batch_groups.keys()):
+            channel_groups = self._channel_batch_groups[channel_id]
+            for group_id in list(channel_groups.keys()):
+                batch_group = channel_groups[group_id]
+                if batch_group.should_flush(self.config.max_batch_age_minutes, self.config.max_batch_size):
+                    batched_message = self._flush_batch_group(batch_group, channel_id)
+                    if batched_message:
+                        batched_messages.append(batched_message)
         
         return batched_messages
     
