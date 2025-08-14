@@ -205,22 +205,31 @@ async def github_webhook(
     request: Request,
     x_github_event: Optional[str] = Header(None),
     x_hub_signature_256: Optional[str] = Header(None),
+    payload: Optional[str] = Form(None),
 ) -> Dict[str, Any]:
     """Handle GitHub webhook events for JIRA integration."""
     try:
         from devsync_ai.services.jira import JiraService
         import json
 
-        payload = await request.body()
-
-        # Verify signature
-        if not x_hub_signature_256 or not verify_github_signature(payload, x_hub_signature_256):
-            raise HTTPException(status_code=401, detail="Invalid signature")
-
         logger.info(f"Received GitHub webhook event: {x_github_event}")
 
-        # Parse the payload
-        webhook_data = json.loads(payload.decode())
+        # Get payload - GitHub can send either JSON or form-encoded
+        if payload:
+            # Form-encoded data (Content-Type: application/x-www-form-urlencoded)
+            logger.info("Parsing form-encoded payload")
+            raw_payload = payload.encode()
+            webhook_data = json.loads(payload)
+        else:
+            # JSON body (Content-Type: application/json)
+            logger.info("Parsing JSON body")
+            raw_payload = await request.body()
+            webhook_data = json.loads(raw_payload.decode())
+
+        # Verify signature
+        if not x_hub_signature_256 or not verify_github_signature(raw_payload, x_hub_signature_256):
+            raise HTTPException(status_code=401, detail="Invalid signature")
+
         logger.info(f"Parsed payload keys: {list(webhook_data.keys())}")
 
         # Extract event type and action
