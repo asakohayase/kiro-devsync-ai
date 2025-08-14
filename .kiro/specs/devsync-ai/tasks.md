@@ -45,14 +45,14 @@
     - Write tests for commit analysis and changelog data extraction
     - _Requirements: 4.1, 4.2, 4.3_
 
-- [ ] 4. Implement JIRA service integration
+- [x] 4. Implement JIRA service integration
   - [x] 4.1 Create JIRA API client and authentication
     - Implement JIRA API client with OAuth/token authentication
     - Add error handling and retry logic for JIRA API calls
     - Write unit tests for JIRA client functionality
     - _Requirements: 2.1, 2.2_
 
-  - [-] 4.2 Implement ticket synchronization and blocker detection
+  - [x] 4.2 Implement ticket synchronization and blocker detection
     - Code methods to sync ticket status and progress from JIRA to Supabase
     - Implement blocker detection logic: tickets stuck in same status ≥7 days (medium severity), ≥14 days (high severity)
     - Detect tickets with no updates for ≥7 days (medium), ≥14 days (high severity)
