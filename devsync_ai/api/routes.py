@@ -53,7 +53,12 @@ async def root() -> Dict[str, str]:
     }
 
 
-# Placeholder routes for future implementation
+# ========================================
+# GITHUB API ENDPOINTS
+# ========================================
+
+
+# Get GitHub pull request summaries and analysis
 @api_router.get("/github/prs")
 async def get_github_prs(
     authenticated: bool = Depends(verify_api_key),
@@ -69,6 +74,7 @@ async def get_github_prs(
         raise HTTPException(status_code=500, detail=f"Failed to fetch GitHub PRs: {str(e)}")
 
 
+# Test GitHub API authentication and credentials
 @api_router.get("/github/test")
 async def test_github_auth(
     authenticated: bool = Depends(verify_api_key),
@@ -84,6 +90,7 @@ async def test_github_auth(
         raise HTTPException(status_code=500, detail=f"GitHub authentication failed: {str(e)}")
 
 
+# Generate changelog from recent commits
 @api_router.get("/github/changelog")
 async def generate_changelog(
     authenticated: bool = Depends(verify_api_key), days: int = 7, format: str = "json"
@@ -110,6 +117,7 @@ async def generate_changelog(
         raise HTTPException(status_code=500, detail=f"Failed to generate changelog: {str(e)}")
 
 
+# Get recent commits with categorization and analysis
 @api_router.get("/github/commits")
 async def get_recent_commits(
     authenticated: bool = Depends(verify_api_key), days: int = 7
@@ -151,6 +159,12 @@ async def get_recent_commits(
         raise HTTPException(status_code=500, detail=f"Failed to get commits: {str(e)}")
 
 
+# ========================================
+# JIRA API ENDPOINTS
+# ========================================
+
+
+# Get JIRA ticket summaries and status (TODO: Not implemented)
 @api_router.get("/jira/tickets")
 async def get_jira_tickets(
     authenticated: bool = Depends(verify_api_key),
@@ -160,6 +174,12 @@ async def get_jira_tickets(
     return {"message": "JIRA tickets endpoint - to be implemented"}
 
 
+# ========================================
+# SLACK API ENDPOINTS
+# ========================================
+
+
+# Send custom notifications to Slack channels (TODO: Not implemented)
 @api_router.post("/slack/notify")
 async def send_slack_notification(
     authenticated: bool = Depends(verify_api_key),
@@ -169,6 +189,12 @@ async def send_slack_notification(
     return {"message": "Slack notification endpoint - to be implemented"}
 
 
+# ========================================
+# ANALYTICS API ENDPOINTS
+# ========================================
+
+
+# Analyze team performance and identify bottlenecks (TODO: Not implemented)
 @api_router.get("/analytics/bottlenecks")
 async def get_bottlenecks(
     authenticated: bool = Depends(verify_api_key),
@@ -178,6 +204,12 @@ async def get_bottlenecks(
     return {"message": "Analytics bottlenecks endpoint - to be implemented"}
 
 
+# ========================================
+# CHANGELOG API ENDPOINTS
+# ========================================
+
+
+# Generate automated weekly changelog reports (TODO: Not implemented)
 @api_router.get("/changelog/weekly")
 async def get_weekly_changelog(
     authenticated: bool = Depends(verify_api_key),
@@ -187,221 +219,7 @@ async def get_weekly_changelog(
     return {"message": "Weekly changelog endpoint - to be implemented"}
 
 
-# GitHub Webhook Handlers for JIRA Integration
-
-
-async def process_jira_update_background(task_name: str, task_func, *args, **kwargs):
-    """Process JIRA updates in the background with error handling."""
-    try:
-        logger = logging.getLogger(__name__)
-        logger.info(f"Starting background task: {task_name}")
-
-        result = await task_func(*args, **kwargs)
-
-        logger.info(f"✅ Background task completed: {task_name} - Result: {result}")
-        return result
-
-    except Exception as e:
-        logger.error(f"❌ Background task failed: {task_name} - Error: {str(e)}")
-        # You could add additional error handling here like:
-        # - Send to error tracking service
-        # - Store failed tasks for retry
-        # - Send notifications
-        return None
-
-
-@api_router.post("/webhooks/github")
-async def github_webhook_handler(
-    request: Request, payload: Optional[str] = Form(None)
-) -> Dict[str, Any]:
-    """Handle GitHub webhook events for JIRA integration."""
-    try:
-        from devsync_ai.services.jira import JiraService
-        import json
-        import logging
-
-        logger = logging.getLogger(__name__)
-        github_event = request.headers.get("x-github-event", "unknown")
-        logger.info(f"Received webhook: {github_event}")
-
-        # Parse the payload
-        if payload:
-            # Form-encoded data
-            logger.info("Parsing form-encoded payload")
-            webhook_data = json.loads(payload)
-        else:
-            # Try JSON body
-            logger.info("Parsing JSON body")
-            body = await request.body()
-            webhook_data = json.loads(body.decode())
-
-        logger.info(f"Parsed payload keys: {list(webhook_data.keys())}")
-
-        # Extract event type and action
-        event_type = webhook_data.get("action", "unknown")
-        logger.info(f"GitHub event: {github_event}, Action: {event_type}")
-
-        # Handle pull request review events FIRST (they also contain pull_request data)
-        if "review" in webhook_data and github_event == "pull_request_review":
-            return await handle_pr_review_webhook(webhook_data, event_type)
-
-        # Handle pull request events
-        elif "pull_request" in webhook_data and github_event == "pull_request":
-            return await handle_pr_webhook(webhook_data, event_type)
-
-        else:
-            # Return success for unhandled events to prevent retries
-            return {
-                "message": f"Unhandled webhook event type: {github_event}.{event_type}",
-                "github_event": github_event,
-                "action": event_type,
-                "status": "ignored",
-            }
-
-    except json.JSONDecodeError as e:
-        logger.error(f"Failed to parse webhook payload: {e}")
-        return {"message": "Invalid JSON payload", "status": "error"}
-    except Exception as e:
-        logger.error(f"Unexpected error in webhook handler: {e}")
-        # Return 200 with error message instead of raising HTTPException
-        # This prevents GitHub from retrying the webhook
-        return {"message": f"Error processing webhook: {str(e)}", "status": "error"}
-
-
-async def handle_pr_webhook(payload: Dict[str, Any], action: str) -> Dict[str, Any]:
-    """Handle GitHub pull request webhook events."""
-    try:
-        from devsync_ai.services.jira import JiraService
-
-        pr_data = payload["pull_request"]
-        pr_number = pr_data["number"]
-
-        jira_service = JiraService()
-
-        if action == "opened":
-            # Create JIRA ticket for new PR - this needs to be synchronous to return ticket_key
-            project_key = settings.jira_project_key
-
-            # For PR creation, we still do it synchronously but with a shorter timeout
-            try:
-                ticket_key = await asyncio.wait_for(
-                    jira_service.create_ticket_from_pr(pr_data, project_key=project_key),
-                    timeout=8.0,  # 8 seconds max to leave buffer for GitHub's 10s timeout
-                )
-
-                return {
-                    "message": f"Created JIRA ticket {ticket_key} for PR #{pr_number}",
-                    "ticket_key": ticket_key,
-                    "pr_number": pr_number,
-                    "action": action,
-                }
-            except asyncio.TimeoutError:
-                # If ticket creation times out, process in background
-                asyncio.create_task(
-                    process_jira_update_background(
-                        f"create_ticket_pr_{pr_number}",
-                        jira_service.create_ticket_from_pr,
-                        pr_data,
-                        project_key=project_key,
-                    )
-                )
-
-                return {
-                    "message": f"PR #{pr_number} received, creating JIRA ticket in background",
-                    "pr_number": pr_number,
-                    "action": action,
-                    "status": "processing_background",
-                }
-
-        elif action in ["closed", "reopened", "ready_for_review"]:
-            # Update JIRA ticket status - process in background for speed
-            asyncio.create_task(
-                process_jira_update_background(
-                    f"update_pr_status_{pr_number}_{action}",
-                    jira_service.update_ticket_from_pr_status,
-                    pr_data,
-                    action,
-                )
-            )
-
-            return {
-                "message": f"PR #{pr_number} {action}, updating JIRA ticket in background",
-                "pr_number": pr_number,
-                "action": action,
-                "status": "processing_background",
-            }
-
-        else:
-            return {
-                "message": f"No action taken for PR event: {action}",
-                "pr_number": pr_number,
-                "action": action,
-            }
-
-    except Exception as e:
-        # Log the error but don't raise HTTPException to avoid webhook retries
-        logger = logging.getLogger(__name__)
-        logger.error(f"Error in PR webhook handler: {str(e)}")
-
-        return {
-            "message": f"Error processing PR #{payload.get('pull_request', {}).get('number', 'unknown')}: {str(e)}",
-            "action": action,
-            "status": "error",
-        }
-
-
-async def handle_pr_review_webhook(payload: Dict[str, Any], action: str) -> Dict[str, Any]:
-    """Handle GitHub pull request review webhook events."""
-    try:
-        from devsync_ai.services.jira import JiraService
-
-        pr_data = payload["pull_request"]
-        review_data = payload["review"]
-        pr_number = pr_data["number"]
-        reviewer = review_data.get("user", {}).get("login", "unknown")
-        review_state = review_data.get("state", "unknown")
-
-        jira_service = JiraService()
-
-        if action == "submitted":
-            # Update JIRA ticket based on review state - process in background
-            asyncio.create_task(
-                process_jira_update_background(
-                    f"update_pr_review_{pr_number}_{review_state}",
-                    jira_service.update_ticket_from_pr_review,
-                    pr_data,
-                    review_data,
-                )
-            )
-
-            return {
-                "message": f"PR #{pr_number} review by {reviewer} ({review_state}), updating JIRA ticket in background",
-                "pr_number": pr_number,
-                "review_state": review_state,
-                "reviewer": reviewer,
-                "action": action,
-                "status": "processing_background",
-            }
-
-        else:
-            return {
-                "message": f"No action taken for review event: {action}",
-                "pr_number": pr_number,
-                "action": action,
-            }
-
-    except Exception as e:
-        # Log the error but don't raise HTTPException to avoid webhook retries
-        logger = logging.getLogger(__name__)
-        logger.error(f"Error in PR review webhook handler: {str(e)}")
-
-        return {
-            "message": f"Error processing PR #{payload.get('pull_request', {}).get('number', 'unknown')} review: {str(e)}",
-            "action": action,
-            "status": "error",
-        }
-
-
+# Get PR to JIRA ticket mappings for debugging/reporting
 @api_router.get("/jira/pr-mappings")
 async def get_pr_ticket_mappings(
     authenticated: bool = Depends(verify_api_key),
@@ -419,6 +237,7 @@ async def get_pr_ticket_mappings(
         raise HTTPException(status_code=500, detail=f"Failed to get PR-ticket mappings: {str(e)}")
 
 
+# Test JIRA API authentication and credentials
 @api_router.get("/jira/test")
 async def test_jira_auth(
     authenticated: bool = Depends(verify_api_key),
