@@ -164,14 +164,96 @@ async def get_recent_commits(
 # ========================================
 
 
-# Get JIRA ticket summaries and status (TODO: Not implemented)
+# Get JIRA ticket summaries and status from synced database
 @api_router.get("/jira/tickets")
 async def get_jira_tickets(
     authenticated: bool = Depends(verify_api_key),
-) -> Dict[str, str]:
-    """Get JIRA ticket status."""
-    # TODO: Implement in task 4.2
-    return {"message": "JIRA tickets endpoint - to be implemented"}
+    project_key: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Get JIRA ticket summaries and status."""
+    try:
+        from devsync_ai.services.jira import JiraService
+
+        jira_service = JiraService()
+
+        # Get tickets from database (synced data)
+        tickets = await jira_service.get_tickets_from_database(project_key=project_key)
+
+        # Get summary statistics
+        total_tickets = len(tickets)
+        tickets_by_status = {}
+        blocked_count = 0
+
+        for ticket in tickets:
+            status = ticket.get("status", "Unknown")
+            tickets_by_status[status] = tickets_by_status.get(status, 0) + 1
+
+            if ticket.get("is_blocked", False):
+                blocked_count += 1
+
+        return {
+            "total_tickets": total_tickets,
+            "blocked_tickets": blocked_count,
+            "tickets_by_status": tickets_by_status,
+            "tickets": tickets[:50],  # Limit to first 50 for performance
+            "project_key": project_key or "all",
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get JIRA tickets: {str(e)}")
+
+
+# Trigger manual JIRA ticket sync with blocker detection
+@api_router.post("/jira/sync")
+async def sync_jira_tickets(
+    authenticated: bool = Depends(verify_api_key),
+) -> Dict[str, Any]:
+    """Trigger manual JIRA ticket sync and blocker detection."""
+    try:
+        from devsync_ai.scheduler.jira_sync import get_scheduler
+        from datetime import datetime
+
+        scheduler = get_scheduler()
+        result = await scheduler.sync_now()
+
+        return {"status": "success", "sync_completed_at": datetime.now().isoformat(), **result}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"JIRA sync failed: {str(e)}")
+
+
+# Get blocked JIRA tickets for bottleneck analysis
+@api_router.get("/jira/blocked")
+async def get_blocked_tickets(
+    authenticated: bool = Depends(verify_api_key),
+    project_key: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Get blocked JIRA tickets and bottlenecks."""
+    try:
+        from devsync_ai.services.jira import JiraService
+
+        jira_service = JiraService()
+
+        # Get tickets from database
+        tickets = await jira_service.get_tickets_from_database(project_key=project_key)
+
+        # Filter for blocked tickets
+        blocked_tickets = [ticket for ticket in tickets if ticket.get("is_blocked", False)]
+
+        # Categorize by severity
+        high_severity = [t for t in blocked_tickets if t.get("blocker_severity") == "high"]
+        medium_severity = [t for t in blocked_tickets if t.get("blocker_severity") == "medium"]
+
+        return {
+            "total_blocked": len(blocked_tickets),
+            "high_severity": len(high_severity),
+            "medium_severity": len(medium_severity),
+            "blocked_tickets": blocked_tickets,
+            "project_key": project_key or "all",
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get blocked tickets: {str(e)}")
 
 
 # ========================================
@@ -219,6 +301,40 @@ async def get_weekly_changelog(
     return {"message": "Weekly changelog endpoint - to be implemented"}
 
 
+# Get blocked JIRA tickets for bottleneck analysis
+@api_router.get("/jira/blocked")
+async def get_blocked_tickets(
+    authenticated: bool = Depends(verify_api_key),
+    project_key: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Get blocked JIRA tickets and bottlenecks."""
+    try:
+        from devsync_ai.services.jira import JiraService
+
+        jira_service = JiraService()
+
+        # Get tickets from database
+        tickets = await jira_service.get_tickets_from_database(project_key=project_key)
+
+        # Filter for blocked tickets
+        blocked_tickets = [ticket for ticket in tickets if ticket.get("is_blocked", False)]
+
+        # Categorize by severity
+        high_severity = [t for t in blocked_tickets if t.get("blocker_severity") == "high"]
+        medium_severity = [t for t in blocked_tickets if t.get("blocker_severity") == "medium"]
+
+        return {
+            "total_blocked": len(blocked_tickets),
+            "high_severity": len(high_severity),
+            "medium_severity": len(medium_severity),
+            "blocked_tickets": blocked_tickets,
+            "project_key": project_key or "all",
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get blocked tickets: {str(e)}")
+
+
 # Get PR to JIRA ticket mappings for debugging/reporting
 @api_router.get("/jira/pr-mappings")
 async def get_pr_ticket_mappings(
@@ -235,6 +351,69 @@ async def get_pr_ticket_mappings(
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get PR-ticket mappings: {str(e)}")
+
+
+# Trigger manual JIRA ticket sync with blocker detection
+@api_router.post("/jira/sync")
+async def sync_jira_tickets(
+    authenticated: bool = Depends(verify_api_key),
+    project_key: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Sync JIRA tickets and detect blockers."""
+    try:
+        from devsync_ai.services.jira import JiraService
+        from datetime import datetime, timedelta
+
+        jira_service = JiraService()
+
+        # Sync tickets updated in the last 7 days by default
+        updated_since = datetime.now() - timedelta(days=7)
+
+        # Perform sync and storage with blocker detection
+        result = await jira_service.sync_and_store_tickets(
+            project_key=project_key, updated_since=updated_since
+        )
+
+        return {"status": "success", "sync_completed_at": datetime.now().isoformat(), **result}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"JIRA sync failed: {str(e)}")
+
+
+# Test database schema and check if tables exist
+@api_router.get("/database/schema")
+async def check_database_schema(
+    authenticated: bool = Depends(verify_api_key),
+) -> Dict[str, Any]:
+    """Check database schema and table existence."""
+    try:
+        from devsync_ai.database.connection import get_database
+
+        db = await get_database()
+
+        # Check if required tables exist
+        tables_to_check = ["jira_tickets", "bottlenecks", "pull_requests", "team_members"]
+        schema_status = {}
+
+        for table in tables_to_check:
+            try:
+                # Try to query the table (limit 0 to just check existence)
+                result = await db.select(table, limit=0)
+                schema_status[table] = {"exists": True, "accessible": True}
+            except Exception as e:
+                schema_status[table] = {"exists": False, "error": str(e)}
+
+        # Check database health
+        health = await db.health_check()
+
+        return {
+            "database_healthy": health,
+            "tables": schema_status,
+            "migration_needed": any(not t.get("exists", False) for t in schema_status.values()),
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database schema check failed: {str(e)}")
 
 
 # Test JIRA API authentication and credentials
