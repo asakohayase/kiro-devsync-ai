@@ -78,6 +78,8 @@ async def handle_pr_webhook(payload: Dict[str, Any], action: str) -> Dict[str, A
 
         if action == "opened":
             # Create JIRA ticket for new PR - this needs to be synchronous to return ticket_key
+            from devsync_ai.config import settings
+
             project_key = settings.jira_project_key
 
             # For PR creation, we still do it synchronously but with a shorter timeout
@@ -205,7 +207,6 @@ async def github_webhook(
     request: Request,
     x_github_event: Optional[str] = Header(None),
     x_hub_signature_256: Optional[str] = Header(None),
-    payload: Optional[str] = Form(None),
 ) -> Dict[str, Any]:
     """Handle GitHub webhook events for JIRA integration."""
     try:
@@ -214,22 +215,15 @@ async def github_webhook(
 
         logger.info(f"Received GitHub webhook event: {x_github_event}")
 
-        # Get payload - GitHub can send either JSON or form-encoded
-        if payload:
-            # Form-encoded data (Content-Type: application/x-www-form-urlencoded)
-            logger.info("Parsing form-encoded payload")
-            raw_payload = payload.encode()
-            webhook_data = json.loads(payload)
-        else:
-            # JSON body (Content-Type: application/json)
-            logger.info("Parsing JSON body")
-            raw_payload = await request.body()
-            webhook_data = json.loads(raw_payload.decode())
+        # Get raw payload for signature verification
+        raw_payload = await request.body()
 
         # Verify signature
         if not x_hub_signature_256 or not verify_github_signature(raw_payload, x_hub_signature_256):
             raise HTTPException(status_code=401, detail="Invalid signature")
 
+        # Parse JSON payload
+        webhook_data = json.loads(raw_payload.decode())
         logger.info(f"Parsed payload keys: {list(webhook_data.keys())}")
 
         # Extract event type and action
@@ -257,7 +251,7 @@ async def github_webhook(
         logger.error(f"Failed to parse webhook payload: {e}")
         return {"message": "Invalid JSON payload", "status": "error"}
     except Exception as e:
-        logger.error(f"Unexpected error in webhook handler: {e}")
+        logger.error(f"Unexpected error in webhook handler: {e}", exc_info=True)
         # Return 200 with error message instead of raising HTTPException
         # This prevents GitHub from retrying the webhook
         return {"message": f"Error processing webhook: {str(e)}", "status": "error"}
