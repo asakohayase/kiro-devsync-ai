@@ -6,6 +6,7 @@ import hmac
 import hashlib
 import logging
 import asyncio
+from datetime import datetime
 
 from devsync_ai.config import settings
 
@@ -66,6 +67,99 @@ async def process_jira_update_background(task_name: str, task_func, *args, **kwa
         return None
 
 
+async def process_jira_and_database_update_background(
+    task_name: str, pr_data: Dict[str, Any], action: str
+):
+    """Update both JIRA ticket and local database to avoid duplication."""
+    try:
+        from devsync_ai.services.jira import JiraService
+        from devsync_ai.database.connection import get_database
+
+        logger.info(f"Starting combined JIRA+DB update: {task_name}")
+
+        jira_service = JiraService()
+        pr_number = pr_data["number"]
+
+        # 1. Update JIRA ticket
+        await jira_service.update_ticket_from_pr_status(pr_data, action)
+
+        # 2. Get the linked JIRA ticket key
+        db = await get_database()
+        pr_mapping = await db.select(
+            table="pr_ticket_mappings", filters={"pr_number": pr_number}, select_fields="ticket_key"
+        )
+
+        if pr_mapping and pr_mapping.get("data"):
+            ticket_key = pr_mapping["data"][0]["ticket_key"]
+
+            # 3. Update local jira_tickets table with fresh data
+            try:
+                # Get fresh ticket data from JIRA
+                ticket_details = await jira_service.get_ticket_details(ticket_key)
+
+                if ticket_details:
+                    # Convert to database format
+                    ticket_data = {
+                        "key": ticket_details.key,
+                        "summary": ticket_details.summary,
+                        "status": ticket_details.status,
+                        "assignee": ticket_details.assignee,
+                        "priority": ticket_details.priority,
+                        "story_points": ticket_details.story_points,
+                        "sprint": ticket_details.sprint,
+                        "blocked": ticket_details.blocked,
+                        "last_updated": ticket_details.last_updated,
+                        "time_in_status_seconds": int(
+                            ticket_details.time_in_status.total_seconds()
+                        ),
+                    }
+
+                    # Update database
+                    await db.update(
+                        table="jira_tickets", data=ticket_data, filters={"key": ticket_key}
+                    )
+
+                    logger.info(f"✅ Updated both JIRA and database for ticket {ticket_key}")
+
+            except Exception as e:
+                logger.error(f"Failed to update local database for {ticket_key}: {e}")
+                # JIRA update succeeded, database update failed - not critical
+
+        # 4. Update pull_requests table
+        pr_update_data = {
+            "id": str(pr_data["id"]),
+            "repository": pr_data["base"]["repo"]["full_name"],
+            "title": pr_data["title"],
+            "author": pr_data["user"]["login"],
+            "status": "merged" if action == "closed" and pr_data.get("merged") else action,
+            "merge_conflicts": False,  # Could be enhanced
+            "created_at": pr_data["created_at"],
+            "updated_at": pr_data["updated_at"],
+            "reviewers": [],  # Could be enhanced
+            "labels": [label["name"] for label in pr_data.get("labels", [])],
+            "data": pr_data,
+        }
+
+        # Upsert PR data
+        existing_pr = await db.select(
+            table="pull_requests", filters={"id": str(pr_data["id"])}, select_fields="id"
+        )
+
+        if existing_pr:
+            await db.update(
+                table="pull_requests", data=pr_update_data, filters={"id": str(pr_data["id"])}
+            )
+        else:
+            await db.insert(table="pull_requests", data=pr_update_data)
+
+        logger.info(f"✅ Combined update completed: {task_name}")
+        return {"status": "success", "updated": ["jira", "database", "pull_requests"]}
+
+    except Exception as e:
+        logger.error(f"❌ Combined update failed: {task_name} - Error: {str(e)}")
+        return {"status": "error", "error": str(e)}
+
+
 async def handle_pr_webhook(payload: Dict[str, Any], action: str) -> Dict[str, Any]:
     """Handle GitHub pull request webhook events."""
     try:
@@ -114,11 +208,10 @@ async def handle_pr_webhook(payload: Dict[str, Any], action: str) -> Dict[str, A
                 }
 
         elif action in ["closed", "reopened", "ready_for_review"]:
-            # Update JIRA ticket status - process in background for speed
+            # Update both JIRA ticket AND local database - process in background for speed
             asyncio.create_task(
-                process_jira_update_background(
+                process_jira_and_database_update_background(
                     f"update_pr_status_{pr_number}_{action}",
-                    jira_service.update_ticket_from_pr_status,
                     pr_data,
                     action,
                 )
@@ -257,19 +350,121 @@ async def github_webhook(
         return {"message": f"Error processing webhook: {str(e)}", "status": "error"}
 
 
-@webhook_router.post("/jira")
-async def jira_webhook(request: Request) -> Dict[str, str]:
-    """Handle JIRA webhook events."""
-    payload = await request.json()
+async def process_jira_ticket_update(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Process JIRA ticket update webhook event."""
+    try:
+        from devsync_ai.services.jira import JiraService
+        from devsync_ai.database.connection import get_database
 
-    logger.info(f"Received JIRA webhook event: {payload.get('webhookEvent', 'unknown')}")
+        # Extract ticket data from webhook payload
+        issue_data = payload.get("issue", {})
+        ticket_key = issue_data.get("key")
 
-    # TODO: Implement event processing in task 7.2
-    # - Validate JIRA webhook payload
-    # - Process ticket updates
-    # - Trigger blocker detection if needed
+        if not ticket_key:
+            logger.warning("JIRA webhook missing ticket key")
+            return {"message": "Missing ticket key", "status": "error"}
 
-    return {"message": "JIRA event received"}
+        # Get JIRA service to convert issue data
+        jira_service = JiraService()
+
+        # Create a mock JIRA issue object from webhook data for conversion
+        # This is a simplified approach - in production you might want to fetch full data
+        ticket_data = {
+            "key": ticket_key,
+            "summary": issue_data.get("fields", {}).get("summary", ""),
+            "status": issue_data.get("fields", {}).get("status", {}).get("name", "Unknown"),
+            "assignee": (
+                issue_data.get("fields", {}).get("assignee", {}).get("displayName")
+                if issue_data.get("fields", {}).get("assignee")
+                else None
+            ),
+            "priority": issue_data.get("fields", {}).get("priority", {}).get("name", "None"),
+            "story_points": issue_data.get("fields", {}).get("customfield_10016"),
+            "blocked": False,  # Will be determined by blocker detection
+            "last_updated": datetime.now(),
+            "time_in_status_seconds": 0,  # Will be calculated
+            "data": issue_data,  # Store full webhook data
+        }
+
+        # Update database
+        db = await get_database()
+
+        # Check if ticket exists
+        existing = await db.select(
+            table="jira_tickets", filters={"key": ticket_key}, select_fields="key"
+        )
+
+        if existing:
+            # Update existing ticket
+            result = await db.update(
+                table="jira_tickets", data=ticket_data, filters={"key": ticket_key}
+            )
+            action = "updated"
+        else:
+            # Insert new ticket
+            result = await db.insert(table="jira_tickets", data=ticket_data)
+            action = "created"
+
+        # Run blocker detection on this ticket
+        await detect_and_store_blockers([ticket_data])
+
+        logger.info(f"JIRA ticket {ticket_key} {action} via webhook")
+
+        return {
+            "message": f"JIRA ticket {ticket_key} {action}",
+            "ticket_key": ticket_key,
+            "action": action,
+            "status": "success",
+        }
+
+    except Exception as e:
+        logger.error(f"Error processing JIRA ticket update: {e}", exc_info=True)
+        return {"message": f"Error processing JIRA ticket update: {str(e)}", "status": "error"}
+
+
+async def detect_and_store_blockers(tickets: list) -> None:
+    """Detect and store blockers for given tickets."""
+    try:
+        from devsync_ai.services.jira import JiraService
+        from devsync_ai.database.connection import get_database
+
+        jira_service = JiraService()
+
+        # Convert ticket data to JiraTicket objects for blocker detection
+        jira_tickets = []
+        for ticket_data in tickets:
+            # This is a simplified conversion - you might want to enhance this
+            from devsync_ai.models.core import JiraTicket
+            from datetime import timedelta
+
+            jira_ticket = JiraTicket(
+                key=ticket_data["key"],
+                summary=ticket_data["summary"],
+                status=ticket_data["status"],
+                assignee=ticket_data["assignee"],
+                priority=ticket_data["priority"],
+                story_points=ticket_data.get("story_points"),
+                sprint=None,  # Extract from webhook if needed
+                blocked=False,
+                last_updated=ticket_data["last_updated"],
+                time_in_status=timedelta(seconds=ticket_data.get("time_in_status_seconds", 0)),
+            )
+            jira_tickets.append(jira_ticket)
+
+        # Detect blockers
+        blocked_tickets = await jira_service.detect_blocked_tickets(jira_tickets)
+
+        # Store blockers in database
+        if blocked_tickets:
+            await jira_service.store_blocked_tickets(blocked_tickets)
+            logger.info(f"Detected and stored {len(blocked_tickets)} blockers from webhook")
+
+    except Exception as e:
+        logger.error(f"Error in blocker detection: {e}", exc_info=True)
+
+
+# JIRA webhook endpoint removed - not needed in GitHub-first architecture
+# GitHub webhooks handle all JIRA integration via API calls
 
 
 @webhook_router.post("/slack")

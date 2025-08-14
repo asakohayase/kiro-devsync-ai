@@ -95,29 +95,15 @@ def setup_event_handlers(app: FastAPI) -> None:
     async def startup_event():
         """Initialize application on startup."""
         logger.info(f"Starting {settings.app_name} v{settings.app_version}")
+        logger.info("🎯 Using webhook-driven architecture for real-time updates")
 
-        # Start JIRA sync scheduler
-        try:
-            from devsync_ai.scheduler.jira_sync import start_scheduler
-
-            await start_scheduler()
-            logger.info("JIRA sync scheduler started")
-        except Exception as e:
-            logger.error(f"Failed to start JIRA sync scheduler: {e}")
+        # NOTE: JIRA sync scheduler removed - using GitHub webhooks for real-time updates
+        # Manual JIRA refresh available via /jira/refresh endpoint for debugging only
 
     @app.on_event("shutdown")
     async def shutdown_event():
         """Clean up resources on shutdown."""
         logger.info(f"Shutting down {settings.app_name}")
-
-        # Stop JIRA sync scheduler
-        try:
-            from devsync_ai.scheduler.jira_sync import stop_scheduler
-
-            await stop_scheduler()
-            logger.info("JIRA sync scheduler stopped")
-        except Exception as e:
-            logger.error(f"Failed to stop JIRA sync scheduler: {e}")
 
 
 # Create the application instance

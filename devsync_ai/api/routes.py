@@ -203,23 +203,36 @@ async def get_jira_tickets(
         raise HTTPException(status_code=500, detail=f"Failed to get JIRA tickets: {str(e)}")
 
 
-# Trigger manual JIRA ticket sync with blocker detection
-@api_router.post("/jira/sync")
-async def sync_jira_tickets(
+# Manual JIRA data refresh (for debugging/initial setup only)
+@api_router.post("/jira/refresh")
+async def refresh_jira_data(
     authenticated: bool = Depends(verify_api_key),
+    project_key: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Trigger manual JIRA ticket sync and blocker detection."""
+    """Manual JIRA data refresh for debugging/initial setup. Use webhooks for real-time updates."""
     try:
-        from devsync_ai.scheduler.jira_sync import get_scheduler
-        from datetime import datetime
+        from devsync_ai.services.jira import JiraService
+        from datetime import datetime, timedelta
 
-        scheduler = get_scheduler()
-        result = await scheduler.sync_now()
+        jira_service = JiraService()
 
-        return {"status": "success", "sync_completed_at": datetime.now().isoformat(), **result}
+        # Only sync recent tickets for manual refresh (last 7 days)
+        updated_since = datetime.now() - timedelta(days=7)
+
+        # Perform one-time sync for debugging/setup
+        result = await jira_service.sync_and_store_tickets(
+            project_key=project_key, updated_since=updated_since
+        )
+
+        return {
+            "status": "success",
+            "refresh_completed_at": datetime.now().isoformat(),
+            "note": "This is for debugging only. Real-time updates come from JIRA webhooks.",
+            **result,
+        }
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"JIRA sync failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"JIRA refresh failed: {str(e)}")
 
 
 # Get blocked JIRA tickets for bottleneck analysis
@@ -351,33 +364,6 @@ async def get_pr_ticket_mappings(
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get PR-ticket mappings: {str(e)}")
-
-
-# Trigger manual JIRA ticket sync with blocker detection
-@api_router.post("/jira/sync")
-async def sync_jira_tickets(
-    authenticated: bool = Depends(verify_api_key),
-    project_key: Optional[str] = None,
-) -> Dict[str, Any]:
-    """Sync JIRA tickets and detect blockers."""
-    try:
-        from devsync_ai.services.jira import JiraService
-        from datetime import datetime, timedelta
-
-        jira_service = JiraService()
-
-        # Sync tickets updated in the last 7 days by default
-        updated_since = datetime.now() - timedelta(days=7)
-
-        # Perform sync and storage with blocker detection
-        result = await jira_service.sync_and_store_tickets(
-            project_key=project_key, updated_since=updated_since
-        )
-
-        return {"status": "success", "sync_completed_at": datetime.now().isoformat(), **result}
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"JIRA sync failed: {str(e)}")
 
 
 # Test database schema and check if tables exist

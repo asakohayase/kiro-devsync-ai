@@ -52,13 +52,13 @@
     - Write unit tests for JIRA client functionality
     - _Requirements: 2.1, 2.2_
 
-  - [x] 4.2 Implement blocker detection algorithms
+  - [x] 4.2 Implement blocker detection algorithms for weekly analysis
     - Implement blocker detection logic: tickets stuck in same status ≥7 days (medium severity), ≥14 days (high severity)
     - Detect tickets with no updates for ≥7 days (medium), ≥14 days (high severity)
     - Flag tickets with blocking statuses: "blocked", "impediment", "waiting", "on hold", "pending", "suspended"
-    - Create database operations for storing ticket data and blocker flags in Supabase
+    - Create database operations for storing detected bottlenecks in bottlenecks table
     - Write tests for blocker detection algorithms
-    - **NOTE**: Ticket data will be updated via JIRA webhooks (Task 7.3), not polling
+    - **NOTE**: Analysis runs weekly via scheduled task, queries JIRA API directly
     - _Requirements: 2.1, 2.2, 2.4_
 
   - [x] 4.3 Implement GitHub to JIRA integration for PR management
@@ -85,19 +85,22 @@
     - **NOTE**: Notifications triggered by webhooks, not scheduled polling
     - _Requirements: 3.2, 3.3, 3.4_
 
-- [ ] 6. Implement analytics service for bottleneck detection
-  - [ ] 6.1 Create team activity analysis algorithms
-    - Implement bottleneck detection logic for PR reviews and ticket progress
-    - Code inactivity detection based on GitHub and JIRA activity patterns
-    - Create duplicate work detection by analyzing similar PRs and tickets
-    - Write unit tests for all analytics algorithms
+- [ ] 6. Implement weekly bottleneck analysis
+  - [ ] 6.1 Create weekly bottleneck detection service
+    - Implement scheduled task to run weekly bottleneck analysis
+    - Query JIRA API for stuck tickets (status unchanged ≥7 days)
+    - Query GitHub API for stale PRs (no updates ≥7 days)
+    - Store detected bottlenecks in bottlenecks table with severity levels
+    - Write unit tests for bottleneck detection algorithms
+    - **FREQUENCY**: Weekly analysis, not real-time
     - _Requirements: 5.1, 5.2, 5.3_
 
-  - [ ] 6.2 Implement insights generation and reporting
-    - Create methods to generate actionable insights from detected patterns
-    - Implement productivity metrics calculation and trend analysis
-    - Add recommendation engine for process improvements
-    - Write tests for insights generation and metric calculations
+  - [ ] 6.2 Implement bottleneck reporting and trends
+    - Create methods to generate bottleneck summaries from bottlenecks table
+    - Implement trend analysis (bottlenecks over time, repeat issues)
+    - Add bottleneck resolution tracking (mark resolved when fixed)
+    - Include bottleneck summary in weekly reports
+    - Write tests for bottleneck reporting and trend analysis
     - _Requirements: 5.4_
 
 - [x] 7. Implement FastAPI endpoints and request handling
@@ -125,16 +128,14 @@
       - Proper error handling to prevent webhook retries
     - _Requirements: 7.1, 7.3_
 
-  - [ ] 7.3 Implement JIRA webhook processing (PRIMARY DATA SOURCE)
-    - Implement JIRA webhook event processing for real-time ticket updates to Supabase
-    - Add webhook signature validation for JIRA events
-    - Parse JIRA webhook payloads (issue_updated, issue_created, issue_deleted events)
-    - Update jira_tickets table in Supabase when tickets change
-    - Add automatic blocker detection when JIRA tickets change status
-    - Store detected blockers in bottlenecks table
-    - Write tests for JIRA webhook processing and validation
-    - **REPLACES**: Scheduled JIRA polling - webhooks provide real-time updates
-    - _Requirements: 7.1, 7.3, 2.1, 2.2_
+  - [x] 7.3 Remove JIRA webhook endpoint completely (SIMPLIFIED ARCHITECTURE)
+    - Remove JIRA webhook endpoint from webhook routes entirely
+    - Clean up all JIRA webhook processing functions
+    - Update documentation to reflect GitHub-only webhook approach
+    - **COMPLETED**: JIRA webhook endpoint completely removed - not needed
+    - **RATIONALE**: GitHub webhooks handle JIRA updates via API calls, no duplication
+    - **ARCHITECTURE**: GitHub webhook → JIRA API → Supabase (pr_ticket_mappings, pull_requests)
+    - _Requirements: 7.1, 7.3_
 
   - [ ] 7.4 Implement Slack webhook processing
     - Implement Slack webhook event handling for slash commands and interactions
