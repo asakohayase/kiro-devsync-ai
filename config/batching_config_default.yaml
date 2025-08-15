@@ -1,0 +1,91 @@
+# Default Smart Message Batching Configuration
+# This configuration provides smart timing controls and spam prevention for Slack notifications
+
+team_id: "default"
+
+# Spam Prevention Configuration
+spam_prevention:
+  enabled: true
+  
+  # Rate limiting settings
+  max_messages_per_minute: 10
+  max_messages_per_hour: 100
+  
+  # Burst detection and cooldown
+  burst_threshold: 5  # Messages in burst_window_seconds to trigger cooldown
+  burst_window_seconds: 30
+  cooldown_after_burst_minutes: 5
+  
+  # Content deduplication
+  duplicate_content_window_minutes: 15
+  
+  # Priority-based rate limits (messages per hour)
+  priority_rate_limits:
+    critical: 20
+    high: 15
+    medium: 10
+    low: 5
+    lowest: 2
+  
+  # Quiet hours (24-hour format)
+  quiet_hours_enabled: true
+  quiet_hours_start: 22  # 10 PM
+  quiet_hours_end: 8     # 8 AM
+  
+  # Active spam prevention strategies
+  strategies:
+    - "rate_limiting"
+    - "adaptive_timing"
+    - "content_deduplication"
+    # - "user_activity_aware"  # Enable if user activity tracking is available
+    # - "priority_throttling"  # Enable for additional priority-based throttling
+
+# Smart Timing Configuration
+timing:
+  mode: "adaptive"  # Options: immediate, fixed_interval, adaptive, smart_burst, quiet_hours
+  
+  # Base timing intervals (in minutes)
+  base_interval_minutes: 5
+  max_interval_minutes: 30
+  min_interval_minutes: 1
+  
+  # Adaptive timing settings
+  adaptive_factor: 1.5  # Multiplier for adaptive delays
+  burst_detection_enabled: true
+  user_activity_tracking: true
+  
+  # Priority-based timing overrides (in minutes, 0 = immediate)
+  priority_timing_overrides:
+    critical: 0   # Immediate
+    high: 1       # Max 1 minute delay
+    medium: 5     # Max 5 minutes delay
+    low: 15       # Max 15 minutes delay
+    lowest: 30    # Max 30 minutes delay
+
+# Channel-specific overrides
+channel_overrides:
+  # Example: High-priority channel with relaxed limits
+  "alerts":
+    spam_prevention:
+      max_messages_per_minute: 20
+      max_messages_per_hour: 200
+      quiet_hours_enabled: false
+    timing:
+      mode: "immediate"
+  
+  # Example: Development channel with stricter batching
+  "dev-updates":
+    spam_prevention:
+      burst_threshold: 3
+      cooldown_after_burst_minutes: 10
+    timing:
+      mode: "smart_burst"
+      base_interval_minutes: 10
+  
+  # Example: General channel with standard settings
+  "general":
+    spam_prevention:
+      duplicate_content_window_minutes: 30
+    timing:
+      mode: "adaptive"
+      adaptive_factor: 2.0

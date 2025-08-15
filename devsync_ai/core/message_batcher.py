@@ -185,9 +185,7 @@ class MessageBatcher:
         self._stats['messages_batched'] += 1
         self._stats['batches_by_channel'][channel_id] += 1
         
-        # Update channel count
-        if channel_id not in self._channel_batch_groups or not self._channel_batch_groups[channel_id]:
-            self._stats['channels_active'] += 1
+
         
         # Check if batch should be flushed
         if batch_group.should_flush(self.config.max_batch_age_minutes, self.config.max_batch_size):
@@ -240,27 +238,36 @@ class MessageBatcher:
     
     def get_batch_stats(self) -> Dict[str, Any]:
         """Get batching statistics."""
+        # Calculate active batches and pending messages from channel-specific data
+        active_batches = sum(len(channel_groups) for channel_groups in self._channel_batch_groups.values())
+        pending_messages = 0
+        for channel_groups in self._channel_batch_groups.values():
+            for group in channel_groups.values():
+                pending_messages += len(group.messages)
+        
         return {
             **self._stats,
-            'active_batches': len(self._batch_groups),
-            'pending_messages': sum(len(group.messages) for group in self._batch_groups.values())
+            'active_batches': active_batches,
+            'pending_messages': pending_messages
         }
     
-    def _find_or_create_batch_group(self, message: BatchableMessage) -> BatchGroup:
-        """Find existing batch group or create new one for message."""
+    def _find_or_create_batch_group(self, message: BatchableMessage, channel_id: str) -> BatchGroup:
+        """Find existing batch group or create new one for message in specific channel."""
+        channel_groups = self._channel_batch_groups[channel_id]
+        
         # Try different strategies to find matching batch
         for strategy in self.config.strategies:
             group_key = self._get_group_key(message, strategy)
             
-            if group_key in self._batch_groups:
-                existing_group = self._batch_groups[group_key]
+            if group_key in channel_groups:
+                existing_group = channel_groups[group_key]
                 
                 # Check if message fits in existing group
                 if self._can_add_to_group(message, existing_group, strategy):
                     return existing_group
         
         # Create new batch group
-        return self._create_new_batch_group(message)
+        return self._create_new_batch_group(message, channel_id)
     
     def _get_group_key(self, message: BatchableMessage, strategy: BatchStrategy) -> str:
         """Generate group key based on batching strategy."""
@@ -330,13 +337,19 @@ class MessageBatcher:
         
         return max(similarities) if similarities else 0.0
     
-    def _create_new_batch_group(self, message: BatchableMessage) -> BatchGroup:
-        """Create new batch group for message."""
+    def _create_new_batch_group(self, message: BatchableMessage, channel_id: str) -> BatchGroup:
+        """Create new batch group for message in specific channel."""
+        # Check if this is a new channel (before accessing it)
+        was_new_channel = channel_id not in self._channel_batch_groups or len(self._channel_batch_groups[channel_id]) == 0
+        
         # Determine batch type based on content
         batch_type = self._determine_batch_type(message)
         
+        # Calculate total batches across all channels for unique ID
+        total_batches = sum(len(channel_groups) for channel_groups in self._channel_batch_groups.values())
+        
         # Generate unique group ID
-        group_id = f"{batch_type.value}_{int(time.time())}_{len(self._batch_groups)}"
+        group_id = f"{batch_type.value}_{int(time.time())}_{total_batches}"
         
         batch_group = BatchGroup(
             id=group_id,
@@ -344,12 +357,18 @@ class MessageBatcher:
             metadata={
                 'primary_content_type': message.content_type.value,
                 'primary_author': message.author,
-                'created_by_strategy': self.config.strategies[0].value if self.config.strategies else 'default'
+                'created_by_strategy': self.config.strategies[0].value if self.config.strategies else 'default',
+                'channel_id': channel_id
             }
         )
         
-        self._batch_groups[group_id] = batch_group
+        # Store in channel-specific dictionary
+        self._channel_batch_groups[channel_id][group_id] = batch_group
         self._stats['batches_created'] += 1
+        
+        # Update channel count if this was a new channel
+        if was_new_channel:
+            self._stats['channels_active'] += 1
         
         return batch_group
     
@@ -366,26 +385,31 @@ class MessageBatcher:
         
         return content_type_mapping.get(message.content_type, BatchType.DAILY_SUMMARY)
     
-    def _flush_batch_group(self, batch_group: BatchGroup) -> Optional[SlackMessage]:
+    def _flush_batch_group(self, batch_group: BatchGroup, channel_id: str) -> Optional[SlackMessage]:
         """Flush batch group and create batched message."""
         if not batch_group.messages:
             return None
         
         try:
-            # Remove from active batches
-            if batch_group.id in self._batch_groups:
-                del self._batch_groups[batch_group.id]
+            # Remove from active batches in the correct channel
+            if channel_id in self._channel_batch_groups and batch_group.id in self._channel_batch_groups[channel_id]:
+                del self._channel_batch_groups[channel_id][batch_group.id]
+                
+                # Clean up empty channel dictionaries
+                if not self._channel_batch_groups[channel_id]:
+                    del self._channel_batch_groups[channel_id]
+                    self._stats['channels_active'] = max(0, self._stats['channels_active'] - 1)
             
             # Create batched message
             batched_message = self._create_batched_message(batch_group)
             
             self._stats['batches_flushed'] += 1
-            self.logger.info(f"Flushed batch group {batch_group.id} with {len(batch_group.messages)} messages")
+            self.logger.info(f"Flushed batch group {batch_group.id} with {len(batch_group.messages)} messages from channel {channel_id}")
             
             return batched_message
             
         except Exception as e:
-            self.logger.error(f"Failed to flush batch group {batch_group.id}: {e}")
+            self.logger.error(f"Failed to flush batch group {batch_group.id} from channel {channel_id}: {e}")
             return None
     
     def _create_batched_message(self, batch_group: BatchGroup) -> SlackMessage:

@@ -1,65 +1,65 @@
-channel_overrides: {}
-environment: production
-last_updated: '2025-08-13T02:59:18.064209'
-message_templates: {}
+environment: development
+last_updated: '2025-08-15T01:49:14.892549'
+message_templates:
+  alert:
+    custom_fields:
+      escalation_enabled: true
+      show_affected_systems: true
+      show_severity: true
+    enabled: true
+    template_type: alert
+  jira_update:
+    custom_fields:
+      highlight_blockers: true
+      show_epic_link: true
+      show_story_points: true
+    enabled: true
+    template_type: jira_update
+  pr_update:
+    custom_fields:
+      highlight_conflicts: true
+      show_ci_status: true
+      show_diff_stats: true
+    enabled: true
+    template_type: pr_update
+  standup:
+    custom_fields:
+      show_progress_bars: true
+      show_team_health: true
+      show_velocity: true
+    enabled: true
+    template_type: standup
 migration_version: 2
 team_settings:
-  business_hours:
-    days:
-    - monday
-    - tuesday
-    - wednesday
-    - thursday
-    - friday
-    end: '17:00'
-    start: 09:00
   content_preferences:
-    highlight_breaking_changes: true
-    include_diff_stats: true
-    max_commit_messages: 5
-    max_description_length: 400
-    show_branch_info: true
+    max_description_length: 500
     show_ci_status: true
-    show_deployment_status: true
     show_file_changes: true
-    show_review_comments: true
     show_technical_details: true
-  custom_fields: {}
-  default_formatting: !!python/object/apply:devsync_ai.core.config_manager.FormattingStyle
-  - rich
+  custom_fields:
+    header_style: standard
+    logo_emoji: ':gear:'
+  default_formatting: rich
   interactive_settings:
-    button_style: default
-    confirmation_level: detailed
-    enable_quick_actions: true
     enable_threading: true
     interactive_mode: true
     show_action_buttons: true
-    show_expandable_sections: true
-    show_external_links: true
-  team_id: frontend-team
-  team_name: Frontend Engineering Team
-  timezone: America/Los_Angeles
+  team_id: demo_team
+  team_name: Demo_Team Team
+  timezone: UTC
   visual_styling:
-    brand_color: '#4caf50'
+    brand_color: '#1f77b4'
     compact_mode: false
     custom_emojis:
-      bug: ':bug:'
-      error: ':x:'
-      feature: ':sparkles:'
-      pr_merged: ':white_check_mark:'
-      pr_new: ':new:'
-      success: ':heavy_check_mark:'
-      warning: ':warning:'
-    emoji_style: !!python/object/apply:devsync_ai.core.config_manager.EmojiStyle
-    - custom
-    error_color: '#f44336'
-    font_family: default
-    message_density: !!python/object/apply:devsync_ai.core.config_manager.MessageDensity
-    - detailed
-    secondary_color: '#8bc34a'
+      error: "\u274C"
+      success: "\u2705"
+      warning: "\u26A0\uFE0F"
+    emoji_style: standard
+    error_color: '#d62728'
+    message_density: detailed
+    secondary_color: '#ff7f0e'
     show_avatars: true
     show_timestamps: true
-    success_color: '#2e7d32'
-    warning_color: '#ff9800'
-user_preferences: {}
+    success_color: '#2ca02c'
+    warning_color: '#ff7f0e'
 version: 1.0.0

@@ -1,56 +1,25 @@
 channel_overrides: {}
 environment: production
-last_updated: '2025-08-13T02:59:18.317372'
+last_updated: '2025-08-15T01:48:25.092350'
 message_templates:
-  alert:
+  standup:
     custom_fields:
-      enable_escalation: true
-      include_metrics: true
-      show_affected_systems: true
-      show_runbook_links: true
-      show_severity: true
-      show_similar_incidents: true
+      accessibility_mode: false
+      color_scheme:
+        primary: '#ff0000'
+      emoji_overrides:
+        success: "\u2713"
+      interactive_elements: true
+      visual_indicators: {}
     enabled: true
-    include_author_info: false
-    max_description_length: 600
+    include_author_info: true
+    max_description_length: 200
     show_ci_status: true
     show_file_changes: true
     show_labels: true
     show_milestone: true
     show_review_status: true
-    template_type: alert
-  jira_update:
-    custom_fields:
-      highlight_blockers: true
-      show_acceptance_criteria: true
-      show_epic_link: true
-      show_sprint_info: true
-      show_story_points: true
-    enabled: true
-    include_author_info: true
-    max_description_length: 250
-    show_ci_status: false
-    show_file_changes: false
-    show_labels: true
-    show_milestone: true
-    show_review_status: true
-    template_type: jira_update
-  pr_update:
-    custom_fields:
-      highlight_conflicts: true
-      include_test_coverage: true
-      show_deployment_status: true
-      show_diff_stats: true
-      show_performance_impact: true
-    enabled: true
-    include_author_info: true
-    max_description_length: 350
-    show_ci_status: true
-    show_file_changes: true
-    show_labels: true
-    show_milestone: true
-    show_review_status: true
-    template_type: pr_update
+    template_type: standup
 migration_version: 2
 team_settings:
   business_hours:

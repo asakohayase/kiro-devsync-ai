@@ -1,0 +1,150 @@
+# Default Message Threading Configuration
+# This configuration manages how related Slack messages are threaded together
+
+# Global threading settings
+enabled: true
+max_thread_age_hours: 24  # Threads expire after 24 hours of inactivity
+max_messages_per_thread: 50  # Maximum messages per thread before creating new thread
+
+# Content similarity settings
+auto_thread_similar_content: true
+thread_similarity_threshold: 0.8  # Similarity threshold for content-based threading (0.0-1.0)
+
+# Temporal threading settings
+temporal_window_minutes: 30  # Messages within this window may be threaded together
+
+# Cross-channel threading (advanced feature)
+enable_cross_channel_threading: false
+
+# Threading strategies (in order of priority)
+strategies:
+  - "entity_based"      # Thread by entity (PR, ticket, etc.) - highest priority
+  - "content_based"     # Thread by content similarity
+  - "temporal"          # Thread by time proximity
+  # - "workflow"        # Thread by workflow stage (advanced)
+  # - "conversation"    # Thread by conversation context (advanced)
+
+# Enabled thread types
+thread_types_enabled:
+  - "pr_lifecycle"        # PR creation -> review -> merge workflow
+  - "jira_updates"        # JIRA ticket status changes and updates
+  - "alert_sequence"      # Related alerts and incident responses
+  - "deployment_pipeline" # Deployment stages and related notifications
+  - "standup_followup"    # Standup discussion and follow-ups
+  # - "incident_response" # Incident handling workflow (advanced)
+  # - "custom"           # Custom threading rules (advanced)
+
+# Entity-based threading rules
+entity_threading:
+  pr:
+    # Thread all messages related to the same PR number
+    enabled: true
+    max_age_hours: 48  # PR threads can live longer
+    thread_lifecycle_events:
+      - "opened"
+      - "review_requested" 
+      - "approved"
+      - "changes_requested"
+      - "merged"
+      - "closed"
+  
+  jira:
+    # Thread all messages related to the same JIRA ticket
+    enabled: true
+    max_age_hours: 72  # JIRA threads can live even longer
+    thread_lifecycle_events:
+      - "created"
+      - "status_changed"
+      - "assigned"
+      - "commented"
+      - "resolved"
+      - "closed"
+  
+  alert:
+    # Thread related alerts together
+    enabled: true
+    max_age_hours: 12  # Alerts have shorter thread life
+    thread_lifecycle_events:
+      - "triggered"
+      - "acknowledged"
+      - "resolved"
+      - "escalated"
+  
+  deployment:
+    # Thread deployment pipeline events
+    enabled: true
+    max_age_hours: 24
+    thread_lifecycle_events:
+      - "started"
+      - "progress"
+      - "completed"
+      - "failed"
+      - "rolled_back"
+
+# Content-based threading rules
+content_threading:
+  # Keywords that suggest messages should be threaded together
+  similarity_keywords:
+    - ["build", "failure", "failed", "error"]
+    - ["deployment", "deploy", "release"]
+    - ["security", "vulnerability", "CVE"]
+    - ["outage", "down", "unavailable"]
+    - ["performance", "slow", "timeout"]
+  
+  # Minimum word overlap for content similarity
+  min_word_overlap: 3
+  
+  # Weight factors for similarity calculation
+  weights:
+    title_similarity: 0.4
+    content_similarity: 0.3
+    metadata_similarity: 0.3
+
+# Temporal threading rules
+temporal_threading:
+  # Time windows for different message types
+  time_windows:
+    alert: 15      # minutes - alerts within 15 minutes may be threaded
+    pr: 60         # minutes - PR events within 1 hour may be threaded  
+    jira: 120      # minutes - JIRA events within 2 hours may be threaded
+    deployment: 30 # minutes - deployment events within 30 minutes
+    default: 30    # minutes - default window for other message types
+  
+  # Maximum messages in temporal thread before creating new thread
+  max_temporal_messages: 10
+
+# Channel-specific overrides
+channel_overrides:
+  # High-activity channels with stricter threading
+  "alerts":
+    max_thread_age_hours: 6
+    temporal_window_minutes: 10
+    thread_similarity_threshold: 0.9
+  
+  # Development channels with relaxed threading
+  "dev-updates":
+    max_thread_age_hours: 48
+    temporal_window_minutes: 60
+    thread_similarity_threshold: 0.7
+  
+  # General channels with standard settings
+  "general":
+    auto_thread_similar_content: false  # Disable content threading in general
+    strategies:
+      - "entity_based"
+      - "temporal"
+
+# Advanced features (experimental)
+advanced:
+  # Machine learning-based content similarity (requires ML models)
+  enable_ml_similarity: false
+  
+  # Automatic thread summarization
+  enable_thread_summaries: true
+  summary_trigger_message_count: 10
+  
+  # Thread analytics and insights
+  enable_thread_analytics: true
+  
+  # Cross-repository threading for related projects
+  enable_cross_repo_threading: false
