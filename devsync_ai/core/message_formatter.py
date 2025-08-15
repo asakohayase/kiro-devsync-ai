@@ -21,6 +21,22 @@ class SlackMessage:
     thread_ts: Optional[str] = None
     channel: Optional[str] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert SlackMessage to dictionary format."""
+        result = {
+            "blocks": self.blocks,
+            "text": self.text,
+            "metadata": self.metadata
+        }
+        
+        if self.thread_ts:
+            result["thread_ts"] = self.thread_ts
+        
+        if self.channel:
+            result["channel"] = self.channel
+        
+        return result
 
 
 @dataclass

@@ -1,6 +1,6 @@
 """Standup message template for daily team updates."""
 
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 from ..core.base_template import SlackMessageTemplate
 from ..core.status_indicators import StatusType, HealthStatus
 
@@ -236,11 +236,15 @@ class StandupTemplate(SlackMessageTemplate):
         
         return self.create_fields_section(stats_fields) if stats_fields else None
     
-    def _create_interactive_dashboard_buttons(self) -> Dict[str, Any]:
+    def _create_interactive_dashboard_buttons(self) -> Optional[Dict[str, Any]]:
         """Create interactive dashboard buttons for common standup actions with responsive design.
         
         Requirements: 1.5, 1.6, 5.4 - Interactive dashboard buttons, summary statistics, responsive design
         """
+        # Check if interactive elements are enabled
+        if not self.config.interactive_elements:
+            return None
+            
         # Primary action buttons for common standup workflows
         primary_actions = [
             {
