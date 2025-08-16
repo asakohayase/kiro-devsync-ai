@@ -1,0 +1,213 @@
+# JIRA Webhook Configuration for Agent Hooks
+# This file contains configuration settings for the JIRA webhook processing system
+
+# JIRA Webhook Settings
+jira_webhook:
+  # Enable/disable JIRA webhook processing
+  enabled: true
+  
+  # Webhook secret for signature verification (set via environment variable)
+  # JIRA_WEBHOOK_SECRET: "your-webhook-secret-here"
+  
+  # Rate limiting settings
+  rate_limiting:
+    max_requests_per_minute: 100
+    
+  # Security settings
+  security:
+    verify_signatures: true
+    allowed_ips: []  # Empty list allows all IPs
+    
+  # Processing settings
+  processing:
+    max_concurrent_hooks: 10
+    hook_timeout_seconds: 30
+    retry_attempts: 3
+    retry_delay_seconds: 5
+
+# Agent Hook Configuration
+agent_hooks:
+  # Global hook settings
+  global:
+    enabled: true
+    default_timeout_seconds: 30
+    default_retry_attempts: 3
+    
+  # Team-specific configurations
+  teams:
+    default:
+      # Status Change Hook
+      status_change:
+        enabled: true
+        channels: ["#dev-updates"]
+        conditions:
+          - field: "priority"
+            operator: "in"
+            values: ["High", "Critical"]
+        urgency_mapping:
+          "To Do -> In Progress": "low"
+          "In Progress -> Done": "medium"
+          "In Progress -> Blocked": "critical"
+          "Blocked -> In Progress": "high"
+        
+      # Assignment Hook
+      assignment:
+        enabled: true
+        channels: ["#team-assignments"]
+        workload_warnings: true
+        max_tickets_per_assignee: 5
+        notify_on_overload: true
+        
+      # Comment Hook
+      comment:
+        enabled: true
+        channels: ["#ticket-discussions"]
+        conditions:
+          - field: "ticket_priority"
+            operator: "in"
+            values: ["High", "Critical"]
+        keywords:
+          blocker: ["blocked", "blocker", "impediment", "stuck"]
+          decision: ["decided", "decision", "agreed", "approved"]
+          urgent: ["urgent", "asap", "immediately", "critical"]
+          
+      # Blocker Detection Hook
+      blocker_detection:
+        enabled: true
+        channels: ["#blockers", "#dev-alerts"]
+        escalation_channels: ["#management"]
+        escalation_delay_hours: 2
+        severity_levels:
+          high: ["blocked", "impediment"]
+          medium: ["waiting", "on hold"]
+          
+      # Priority Change Hook
+      priority_change:
+        enabled: true
+        channels: ["#priority-changes"]
+        escalation_channels: ["#management"]
+        notify_on_escalation: true
+        notify_on_downgrade: false
+
+    # Example team-specific configuration
+    backend-team:
+      status_change:
+        enabled: true
+        channels: ["#backend-updates"]
+        conditions:
+          - field: "component"
+            operator: "contains"
+            values: ["API", "Database", "Backend"]
+            
+      assignment:
+        enabled: true
+        channels: ["#backend-assignments"]
+        max_tickets_per_assignee: 3  # Backend team has lower capacity
+        
+    frontend-team:
+      status_change:
+        enabled: true
+        channels: ["#frontend-updates"]
+        conditions:
+          - field: "component"
+            operator: "contains"
+            values: ["UI", "Frontend", "Web"]
+
+# Notification Templates
+notification_templates:
+  status_change:
+    default: |
+      🔄 **Status Change**: {ticket_key}
+      **Title**: {summary}
+      **Status**: {old_status} → {new_status}
+      **Assignee**: {assignee}
+      **Priority**: {priority}
+      {sprint_info}
+      
+    blocked: |
+      🚫 **BLOCKED**: {ticket_key}
+      **Title**: {summary}
+      **Blocked Status**: {new_status}
+      **Assignee**: {assignee}
+      **Action Required**: Please resolve blocking issue
+      
+  assignment:
+    default: |
+      👤 **Assignment**: {ticket_key}
+      **Title**: {summary}
+      **Assigned to**: {assignee}
+      **Priority**: {priority}
+      **Story Points**: {story_points}
+      **Due Date**: {due_date}
+      
+    overload_warning: |
+      ⚠️ **Workload Alert**: {assignee}
+      **New Assignment**: {ticket_key}
+      **Current Load**: {current_tickets} tickets ({total_story_points} points)
+      **Capacity**: {capacity_percentage}%
+      
+  comment:
+    blocker: |
+      🚨 **Blocker Comment**: {ticket_key}
+      **Author**: {comment_author}
+      **Comment**: {comment_preview}
+      **Ticket**: {summary}
+      **Priority**: {priority}
+      
+    decision: |
+      ✅ **Decision Made**: {ticket_key}
+      **Author**: {comment_author}
+      **Decision**: {comment_preview}
+      **Ticket**: {summary}
+      
+    mention: |
+      💬 **You were mentioned**: {ticket_key}
+      **Author**: {comment_author}
+      **Comment**: {comment_preview}
+      **Ticket**: {summary}
+
+# Analytics and Monitoring
+analytics:
+  enabled: true
+  retention_days: 90
+  metrics:
+    - hook_execution_count
+    - hook_success_rate
+    - processing_time
+    - notification_delivery_rate
+    - error_rate
+    
+  alerts:
+    high_error_rate:
+      threshold: 0.1  # 10% error rate
+      window_minutes: 15
+      
+    slow_processing:
+      threshold_ms: 5000  # 5 seconds
+      window_minutes: 10
+      
+    low_success_rate:
+      threshold: 0.9  # 90% success rate
+      window_minutes: 30
+
+# Logging Configuration
+logging:
+  level: INFO
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  
+  # Log webhook events
+  webhook_events: true
+  
+  # Log hook executions
+  hook_executions: true
+  
+  # Log performance metrics
+  performance_metrics: true
+  
+  # Log errors with full stack traces
+  detailed_errors: true
+
+# Environment Variables Required:
+# JIRA_WEBHOOK_SECRET - Secret for webhook signature verification
+# SLACK_BOT_TOKEN - Slack bot token for sending notifications
+# DATABASE_URL - Database connection string for storing hook execution data

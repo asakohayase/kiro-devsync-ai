@@ -10,12 +10,16 @@ import json
 from datetime import datetime
 
 from devsync_ai.config import settings
+from devsync_ai.webhooks.jira_webhook_handler import jira_webhook_router, initialize_dispatcher, shutdown_dispatcher
 
 
 logger = logging.getLogger(__name__)
 
 # Webhook router
 webhook_router = APIRouter()
+
+# Include JIRA webhook router
+webhook_router.include_router(jira_webhook_router)
 
 
 def verify_github_signature(payload: bytes, signature: str) -> bool:
