@@ -1,0 +1,284 @@
+# Engineering Team Hook Configuration
+# This configuration defines rules for the engineering team's Agent Hooks
+
+team_id: "engineering"
+team_name: "Engineering Team"
+enabled: true
+version: "1.0.0"
+
+# Default channels for different hook types
+default_channels:
+  status_change: "#dev-updates"
+  assignment: "#assignments"
+  comment: "#discussions"
+  blocker: "#alerts"
+  general: "#engineering"
+
+# Notification preferences
+notification_preferences:
+  batch_threshold: 3
+  batch_timeout_minutes: 5
+  quiet_hours:
+    enabled: true
+    start: "22:00"
+    end: "08:00"
+  weekend_notifications: false
+
+# Business hours for the team
+business_hours:
+  start: "09:00"
+  end: "17:00"
+  timezone: "America/New_York"
+  days: ["monday", "tuesday", "wednesday", "thursday", "friday"]
+
+# Escalation rules
+escalation_rules:
+  - condition: "urgency == 'critical'"
+    escalate_after_minutes: 15
+    escalate_to: ["#alerts", "#management"]
+  - condition: "priority == 'Blocker'"
+    escalate_after_minutes: 30
+    escalate_to: ["#alerts"]
+
+# Hook rules (evaluated in priority order)
+rules:
+  # Critical/Blocker Issues - Highest Priority
+  - rule_id: "critical_blocker_rule"
+    name: "Critical and Blocker Issues"
+    description: "Immediately route critical and blocker issues to alerts channel"
+    hook_types: ["StatusChangeHook", "AssignmentHook", "CommentHook", "BlockerHook"]
+    enabled: true
+    priority: 100
+    conditions:
+      logic: "or"
+      conditions:
+        - field: "ticket.priority.name"
+          operator: "in"
+          value: ["Critical", "Blocker", "Highest"]
+        - field: "event.classification.category"
+          operator: "equals"
+          value: "blocker"
+        - field: "event.classification.urgency"
+          operator: "equals"
+          value: "critical"
+    metadata:
+      channels: ["#alerts", "#engineering"]
+      urgency_override: "critical"
+      escalation_enabled: true
+
+  # Production Issues
+  - rule_id: "production_issues_rule"
+    name: "Production Issues"
+    description: "Route production-related issues with high priority"
+    hook_types: ["StatusChangeHook", "AssignmentHook", "CommentHook"]
+    enabled: true
+    priority: 90
+    conditions:
+      logic: "and"
+      conditions:
+        - logic: "or"
+          conditions:
+            - field: "ticket.summary"
+              operator: "contains"
+              value: "production"
+              case_sensitive: false
+            - field: "ticket.labels"
+              operator: "contains"
+              value: "production"
+            - field: "ticket.components"
+              operator: "contains"
+              value: "production"
+        - field: "ticket.priority.name"
+          operator: "in"
+          value: ["High", "Critical", "Blocker"]
+    metadata:
+      channels: ["#alerts", "#production"]
+      urgency_override: "high"
+
+  # Security Issues
+  - rule_id: "security_issues_rule"
+    name: "Security Issues"
+    description: "Route security-related issues to security team"
+    hook_types: ["StatusChangeHook", "AssignmentHook", "CommentHook"]
+    enabled: true
+    priority: 85
+    conditions:
+      logic: "or"
+      conditions:
+        - field: "ticket.labels"
+          operator: "contains"
+          value: "security"
+        - field: "ticket.summary"
+          operator: "regex"
+          value: "\\b(security|vulnerability|exploit|breach)\\b"
+          case_sensitive: false
+        - field: "ticket.components"
+          operator: "contains"
+          value: "security"
+    metadata:
+      channels: ["#security", "#alerts"]
+      urgency_override: "high"
+
+  # High Priority Issues
+  - rule_id: "high_priority_rule"
+    name: "High Priority Issues"
+    description: "Route high priority issues to development updates"
+    hook_types: ["StatusChangeHook", "AssignmentHook"]
+    enabled: true
+    priority: 70
+    conditions:
+      logic: "and"
+      conditions:
+        - field: "ticket.priority.name"
+          operator: "in"
+          value: ["High", "Major"]
+        - field: "event.classification.urgency"
+          operator: "in"
+          value: ["high", "medium"]
+    metadata:
+      channels: ["#dev-updates", "#engineering"]
+
+  # Bug Issues
+  - rule_id: "bug_issues_rule"
+    name: "Bug Issues"
+    description: "Route bug issues to bug tracking channel"
+    hook_types: ["StatusChangeHook", "AssignmentHook", "CommentHook"]
+    enabled: true
+    priority: 60
+    conditions:
+      logic: "and"
+      conditions:
+        - field: "ticket.issue_type.name"
+          operator: "equals"
+          value: "Bug"
+        - field: "ticket.priority.name"
+          operator: "in"
+          value: ["Medium", "High", "Critical"]
+    metadata:
+      channels: ["#bugs", "#dev-updates"]
+
+  # Assignment Changes for Senior Engineers
+  - rule_id: "senior_assignment_rule"
+    name: "Senior Engineer Assignments"
+    description: "Track assignments to senior engineers"
+    hook_types: ["AssignmentHook"]
+    enabled: true
+    priority: 50
+    conditions:
+      logic: "and"
+      conditions:
+        - field: "event.event_type"
+          operator: "in"
+          value: ["jira:issue_assigned", "jira:issue_updated"]
+        - field: "stakeholders.display_names"
+          operator: "regex"
+          value: "\\b(Senior|Lead|Principal)\\b"
+          case_sensitive: false
+    metadata:
+      channels: ["#assignments", "#management"]
+
+  # Epic and Story Updates
+  - rule_id: "epic_story_rule"
+    name: "Epic and Story Updates"
+    description: "Track updates to epics and stories"
+    hook_types: ["StatusChangeHook", "CommentHook"]
+    enabled: true
+    priority: 40
+    conditions:
+      logic: "and"
+      conditions:
+        - field: "ticket.issue_type.name"
+          operator: "in"
+          value: ["Epic", "Story"]
+        - field: "event.classification.significance"
+          operator: "in"
+          value: ["major", "moderate"]
+    metadata:
+      channels: ["#product", "#dev-updates"]
+
+  # Blocked Issues
+  - rule_id: "blocked_issues_rule"
+    name: "Blocked Issues"
+    description: "Track issues that become blocked"
+    hook_types: ["StatusChangeHook", "BlockerHook", "CommentHook"]
+    enabled: true
+    priority: 80
+    conditions:
+      logic: "or"
+      conditions:
+        - field: "ticket.status.name"
+          operator: "contains"
+          value: "blocked"
+          case_sensitive: false
+        - field: "event.classification.keywords"
+          operator: "contains"
+          value: "blocked"
+        - field: "ticket.labels"
+          operator: "contains"
+          value: "blocked"
+    metadata:
+      channels: ["#alerts", "#blockers"]
+      urgency_override: "high"
+
+  # Comment Notifications for High Priority
+  - rule_id: "high_priority_comments_rule"
+    name: "High Priority Comments"
+    description: "Route comments on high priority issues"
+    hook_types: ["CommentHook"]
+    enabled: true
+    priority: 65
+    conditions:
+      logic: "and"
+      conditions:
+        - field: "event.event_type"
+          operator: "equals"
+          value: "jira:issue_commented"
+        - field: "ticket.priority.name"
+          operator: "in"
+          value: ["High", "Critical", "Blocker"]
+    metadata:
+      channels: ["#discussions", "#dev-updates"]
+
+  # Weekend and After Hours Critical Issues
+  - rule_id: "after_hours_critical_rule"
+    name: "After Hours Critical Issues"
+    description: "Special handling for critical issues outside business hours"
+    hook_types: ["StatusChangeHook", "AssignmentHook", "CommentHook", "BlockerHook"]
+    enabled: true
+    priority: 95
+    conditions:
+      logic: "and"
+      conditions:
+        - field: "ticket.priority.name"
+          operator: "in"
+          value: ["Critical", "Blocker"]
+        - field: "event.classification.urgency"
+          operator: "equals"
+          value: "critical"
+    metadata:
+      channels: ["#alerts", "#on-call"]
+      urgency_override: "critical"
+      ignore_quiet_hours: true
+      escalation_enabled: true
+
+  # Default Catch-All Rule
+  - rule_id: "default_rule"
+    name: "Default Engineering Updates"
+    description: "Default rule for all other engineering issues"
+    hook_types: ["StatusChangeHook", "AssignmentHook", "CommentHook"]
+    enabled: true
+    priority: 10
+    conditions:
+      logic: "and"
+      conditions:
+        - field: "event.project_key"
+          operator: "regex"
+          value: "^(ENG|DEV|TECH)"
+        - field: "event.classification.affected_teams"
+          operator: "contains"
+          value: "engineering"
+    metadata:
+      channels: ["#engineering"]
+
+# Last updated timestamp
+last_updated: "2025-08-15T10:00:00Z"

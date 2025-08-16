@@ -1,0 +1,315 @@
+# DevSync AI Analytics System Configuration
+# Copy this file to analytics_config.yaml and customize for your environment
+
+# Dashboard Configuration
+dashboard:
+  # Server settings
+  host: "0.0.0.0"
+  port: 8001
+  debug: false
+  
+  # Real-time update intervals (seconds)
+  metrics_update_interval: 5
+  cleanup_interval: 3600  # 1 hour
+  aggregation_interval: 1800  # 30 minutes
+  
+  # WebSocket settings
+  websocket:
+    max_connections: 100
+    heartbeat_interval: 30
+    connection_timeout: 300
+
+# Monitoring Thresholds
+thresholds:
+  # CPU usage thresholds (percentage)
+  cpu_warning: 70.0
+  cpu_critical: 90.0
+  
+  # Memory usage thresholds (percentage)
+  memory_warning: 80.0
+  memory_critical: 95.0
+  
+  # Response time thresholds (milliseconds)
+  response_time_warning: 2000.0
+  response_time_critical: 5000.0
+  
+  # Error rate thresholds (percentage)
+  error_rate_warning: 5.0
+  error_rate_critical: 15.0
+  
+  # Success rate thresholds (percentage)
+  success_rate_warning: 95.0
+  success_rate_critical: 85.0
+  
+  # Queue depth thresholds
+  queue_depth_warning: 100
+  queue_depth_critical: 500
+
+# Data Management
+data_management:
+  # Database configuration
+  database:
+    path: "analytics.db"
+    connection_pool_size: 10
+    query_timeout: 30
+  
+  # Data retention policies (days)
+  retention_policies:
+    hook_execution: 90
+    system_metrics: 30
+    team_productivity: 180
+    user_engagement: 60
+    ab_test_results: 365
+    predictive_insights: 120
+  
+  # Aggregation settings
+  aggregation:
+    enabled: true
+    batch_size: 1000
+    compression_enabled: true
+    
+  # Export settings
+  export:
+    max_records_per_export: 10000
+    supported_formats: ["json", "csv", "pdf"]
+    temp_directory: "/tmp/analytics_exports"
+
+# Analytics Engines Configuration
+analytics:
+  # Productivity Analytics
+  productivity:
+    # Baseline metrics (before automation)
+    baseline_metrics:
+      average_sprint_velocity: 25.0
+      average_blocker_resolution_hours: 48.0
+      average_response_time_minutes: 120.0
+      manual_status_updates_per_sprint: 150
+      cross_team_communication_overhead: 0.25
+    
+    # Improvement thresholds (percentage)
+    improvement_thresholds:
+      sprint_velocity: 10.0
+      blocker_resolution_time: 20.0
+      response_time: 30.0
+      assignment_efficiency: 15.0
+      communication_efficiency: 25.0
+      collaboration_score: 12.0
+  
+  # Intelligence Engine
+  intelligence:
+    # Prediction confidence thresholds
+    confidence_thresholds:
+      blocker_risk: 0.75
+      assignment_success: 0.80
+      sprint_completion: 0.85
+      team_burnout: 0.70
+    
+    # Machine learning settings
+    ml_settings:
+      model_update_interval: 86400  # 24 hours
+      training_data_window_days: 90
+      feature_importance_threshold: 0.1
+  
+  # Optimization Engine
+  optimization:
+    # A/B testing configuration
+    ab_testing:
+      default_test_duration_days: 7
+      minimum_sample_size: 100
+      statistical_significance_threshold: 0.95
+      
+    # Performance benchmarks
+    industry_benchmarks:
+      average_execution_time_ms: 1500.0
+      success_rate: 0.95
+      notification_open_rate: 0.65
+      click_through_rate: 0.25
+      action_completion_rate: 0.15
+      user_satisfaction_score: 4.2
+
+# Notification and Alerting
+notifications:
+  # Alert channels
+  channels:
+    slack:
+      enabled: true
+      webhook_url: "${SLACK_WEBHOOK_URL}"
+      channel: "#devops-alerts"
+      
+    email:
+      enabled: false
+      smtp_server: "${SMTP_SERVER}"
+      smtp_port: 587
+      username: "${SMTP_USERNAME}"
+      password: "${SMTP_PASSWORD}"
+      recipients: ["admin@company.com"]
+  
+  # Alert rules
+  alert_rules:
+    # System health alerts
+    system_critical:
+      enabled: true
+      cooldown_minutes: 15
+      escalation_levels: ["slack", "email"]
+      
+    performance_degradation:
+      enabled: true
+      cooldown_minutes: 30
+      threshold_violations: 3  # Number of consecutive violations
+      
+    # Hook performance alerts
+    hook_failure_rate:
+      enabled: true
+      threshold: 0.10  # 10% failure rate
+      window_minutes: 60
+      
+    # Team productivity alerts
+    sprint_risk:
+      enabled: true
+      risk_levels: ["high", "critical"]
+      notification_days_before_end: [3, 1]
+
+# Security and Authentication
+security:
+  # API authentication
+  api_auth:
+    enabled: false  # Set to true in production
+    jwt_secret: "${JWT_SECRET}"
+    token_expiry_hours: 24
+    
+  # Rate limiting
+  rate_limiting:
+    enabled: true
+    requests_per_minute: 100
+    burst_size: 20
+    
+  # CORS settings
+  cors:
+    allowed_origins: ["*"]  # Restrict in production
+    allowed_methods: ["GET", "POST", "PUT", "DELETE"]
+    allowed_headers: ["*"]
+
+# Integration Settings
+integrations:
+  # JIRA integration
+  jira:
+    enabled: true
+    base_url: "${JIRA_BASE_URL}"
+    username: "${JIRA_USERNAME}"
+    api_token: "${JIRA_API_TOKEN}"
+    
+  # Slack integration
+  slack:
+    enabled: true
+    bot_token: "${SLACK_BOT_TOKEN}"
+    app_token: "${SLACK_APP_TOKEN}"
+    
+  # External monitoring tools
+  external_monitoring:
+    prometheus:
+      enabled: false
+      metrics_endpoint: "/metrics"
+      
+    grafana:
+      enabled: false
+      dashboard_url: "${GRAFANA_DASHBOARD_URL}"
+      
+    datadog:
+      enabled: false
+      api_key: "${DATADOG_API_KEY}"
+
+# Voice Command Integration
+voice_commands:
+  enabled: true
+  
+  # Supported queries
+  supported_queries:
+    - pattern: "sprint health"
+      handler: "get_sprint_health"
+      
+    - pattern: "team productivity"
+      handler: "get_team_productivity"
+      
+    - pattern: "system status"
+      handler: "get_system_status"
+      
+    - pattern: "recent alerts"
+      handler: "get_recent_alerts"
+  
+  # Speech recognition settings
+  speech_recognition:
+    timeout_seconds: 10
+    language: "en-US"
+    confidence_threshold: 0.7
+
+# Demo and Development Settings
+demo:
+  # Demo data generation
+  generate_demo_data: false
+  demo_teams: ["frontend-team", "backend-team", "devops-team"]
+  demo_data_points: 1000
+  
+  # Mock data settings
+  mock_data:
+    enabled: false  # Enable for development/testing
+    realistic_patterns: true
+    include_anomalies: true
+
+# Logging Configuration
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  
+  # Log files
+  files:
+    main_log: "analytics_dashboard.log"
+    error_log: "analytics_errors.log"
+    access_log: "analytics_access.log"
+  
+  # Log rotation
+  rotation:
+    max_size_mb: 100
+    backup_count: 5
+    
+  # Structured logging
+  structured:
+    enabled: true
+    include_trace_id: true
+    include_user_context: true
+
+# Performance Optimization
+performance:
+  # Caching
+  cache:
+    enabled: true
+    ttl_seconds: 900  # 15 minutes
+    max_size: 1000
+    
+  # Database optimization
+  database:
+    connection_pooling: true
+    query_optimization: true
+    index_maintenance: true
+    
+  # Memory management
+  memory:
+    max_history_hours: 24
+    cleanup_interval_minutes: 60
+    gc_threshold: 0.8  # 80% memory usage
+
+# Feature Flags
+features:
+  # Analytics features
+  predictive_analytics: true
+  ab_testing: true
+  voice_commands: true
+  real_time_dashboard: true
+  
+  # Advanced features
+  machine_learning: false  # Requires additional setup
+  advanced_visualizations: true
+  custom_dashboards: false
+  
+  # Experimental features
+  experimental_insights: false
+  beta_optimizations: false

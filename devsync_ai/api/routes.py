@@ -16,6 +16,14 @@ security = HTTPBearer(auto_error=False)
 # Main API router
 api_router = APIRouter()
 
+# Import hook management routes
+from devsync_ai.api.hook_management_routes import router as hook_management_router
+from devsync_ai.api.hook_configuration_routes import router as hook_config_router
+
+# Include hook management routes
+api_router.include_router(hook_management_router)
+api_router.include_router(hook_config_router)
+
 
 async def verify_api_key(
     credentials: HTTPAuthorizationCredentials = Depends(security),

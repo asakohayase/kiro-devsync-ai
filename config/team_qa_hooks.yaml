@@ -1,0 +1,326 @@
+# QA Team Hook Configuration
+# This configuration defines rules for the QA team's Agent Hooks
+
+team_id: "qa"
+team_name: "Quality Assurance Team"
+enabled: true
+version: "1.0.0"
+
+# Default channels for different hook types
+default_channels:
+  status_change: "#qa-updates"
+  assignment: "#qa-assignments"
+  comment: "#qa-discussions"
+  blocker: "#qa-blockers"
+  general: "#qa-team"
+
+# Notification preferences
+notification_preferences:
+  batch_threshold: 5
+  batch_timeout_minutes: 10
+  quiet_hours:
+    enabled: true
+    start: "19:00"
+    end: "09:00"
+  weekend_notifications: true  # QA often works weekends for releases
+
+# Business hours for the team
+business_hours:
+  start: "08:00"
+  end: "18:00"
+  timezone: "America/New_York"
+  days: ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday"]
+
+# Escalation rules
+escalation_rules:
+  - condition: "priority == 'Blocker' AND issue_type == 'Bug'"
+    escalate_after_minutes: 20
+    escalate_to: ["#qa-blockers", "#engineering"]
+
+# Hook rules (evaluated in priority order)
+rules:
+  # Test Blocker Issues
+  - rule_id: "test_blocker_rule"
+    name: "Test Blocker Issues"
+    description: "Critical issues blocking testing activities"
+    hook_types: ["StatusChangeHook", "AssignmentHook", "CommentHook", "BlockerHook"]
+    enabled: true
+    priority: 100
+    conditions:
+      logic: "and"
+      conditions:
+        - field: "ticket.priority.name"
+          operator: "in"
+          value: ["Blocker", "Critical"]
+        - logic: "or"
+          conditions:
+            - field: "ticket.labels"
+              operator: "contains"
+              value: "testing"
+            - field: "ticket.components"
+              operator: "contains"
+              value: "qa"
+            - field: "ticket.summary"
+              operator: "contains"
+              value: "test"
+              case_sensitive: false
+    metadata:
+      channels: ["#qa-blockers", "#alerts"]
+      urgency_override: "critical"
+
+  # Bug Reports and Defects
+  - rule_id: "bug_defect_rule"
+    name: "Bug Reports and Defects"
+    description: "Track all bug reports and defects"
+    hook_types: ["StatusChangeHook", "AssignmentHook", "CommentHook"]
+    enabled: true
+    priority: 90
+    conditions:
+      logic: "and"
+      conditions:
+        - field: "ticket.issue_type.name"
+          operator: "in"
+          value: ["Bug", "Defect"]
+        - field: "ticket.priority.name"
+          operator: "in"
+          value: ["Medium", "High", "Critical", "Blocker"]
+    metadata:
+      channels: ["#bugs", "#qa-updates"]
+
+  # Test Case Updates
+  - rule_id: "test_case_rule"
+    name: "Test Case Updates"
+    description: "Track updates to test cases and test plans"
+    hook_types: ["StatusChangeHook", "AssignmentHook", "CommentHook"]
+    enabled: true
+    priority: 80
+    conditions:
+      logic: "or"
+      conditions:
+        - field: "ticket.issue_type.name"
+          operator: "in"
+          value: ["Test", "Test Case", "Test Plan"]
+        - field: "ticket.labels"
+          operator: "contains"
+          value: "test-case"
+        - field: "ticket.summary"
+          operator: "regex"
+          value: "\\b(test case|test plan|test scenario)\\b"
+          case_sensitive: false
+    metadata:
+      channels: ["#test-cases", "#qa-updates"]
+
+  # Automation Issues
+  - rule_id: "automation_rule"
+    name: "Test Automation Issues"
+    description: "Track test automation related issues"
+    hook_types: ["StatusChangeHook", "AssignmentHook", "CommentHook"]
+    enabled: true
+    priority: 75
+    conditions:
+      logic: "or"
+      conditions:
+        - field: "ticket.labels"
+          operator: "contains"
+          value: "automation"
+        - field: "ticket.components"
+          operator: "contains"
+          value: "automation"
+        - field: "ticket.summary"
+          operator: "regex"
+          value: "\\b(automation|automated|selenium|cypress)\\b"
+          case_sensitive: false
+    metadata:
+      channels: ["#test-automation", "#qa-updates"]
+
+  # Release Testing
+  - rule_id: "release_testing_rule"
+    name: "Release Testing Issues"
+    description: "Track issues related to release testing"
+    hook_types: ["StatusChangeHook", "AssignmentHook", "CommentHook"]
+    enabled: true
+    priority: 85
+    conditions:
+      logic: "or"
+      conditions:
+        - field: "ticket.labels"
+          operator: "contains"
+          value: "release"
+        - field: "ticket.fix_versions"
+          operator: "regex"
+          value: "\\d+\\.\\d+\\.\\d+"  # Version pattern
+        - field: "ticket.summary"
+          operator: "regex"
+          value: "\\b(release|deployment|go-live)\\b"
+          case_sensitive: false
+    metadata:
+      channels: ["#releases", "#qa-updates"]
+
+  # Performance Testing
+  - rule_id: "performance_testing_rule"
+    name: "Performance Testing Issues"
+    description: "Track performance and load testing issues"
+    hook_types: ["StatusChangeHook", "AssignmentHook", "CommentHook"]
+    enabled: true
+    priority: 70
+    conditions:
+      logic: "or"
+      conditions:
+        - field: "ticket.labels"
+          operator: "contains"
+          value: "performance"
+        - field: "ticket.summary"
+          operator: "regex"
+          value: "\\b(performance|load|stress|benchmark)\\b"
+          case_sensitive: false
+        - field: "ticket.components"
+          operator: "contains"
+          value: "performance"
+    metadata:
+      channels: ["#performance", "#qa-updates"]
+
+  # Regression Testing
+  - rule_id: "regression_testing_rule"
+    name: "Regression Testing Issues"
+    description: "Track regression testing activities"
+    hook_types: ["StatusChangeHook", "AssignmentHook", "CommentHook"]
+    enabled: true
+    priority: 65
+    conditions:
+      logic: "or"
+      conditions:
+        - field: "ticket.labels"
+          operator: "contains"
+          value: "regression"
+        - field: "ticket.summary"
+          operator: "contains"
+          value: "regression"
+          case_sensitive: false
+        - field: "ticket.issue_type.name"
+          operator: "equals"
+          value: "Regression Test"
+    metadata:
+      channels: ["#regression", "#qa-updates"]
+
+  # QA Assignment Changes
+  - rule_id: "qa_assignment_rule"
+    name: "QA Team Assignments"
+    description: "Track assignments within QA team"
+    hook_types: ["AssignmentHook"]
+    enabled: true
+    priority: 60
+    conditions:
+      logic: "and"
+      conditions:
+        - field: "event.event_type"
+          operator: "in"
+          value: ["jira:issue_assigned", "jira:issue_updated"]
+        - logic: "or"
+          conditions:
+            - field: "stakeholders.display_names"
+              operator: "regex"
+              value: "\\b(QA|Tester|Test)\\b"
+              case_sensitive: false
+            - field: "event.classification.affected_teams"
+              operator: "contains"
+              value: "qa"
+    metadata:
+      channels: ["#qa-assignments"]
+
+  # Environment Issues
+  - rule_id: "environment_issues_rule"
+    name: "Test Environment Issues"
+    description: "Track issues with test environments"
+    hook_types: ["StatusChangeHook", "AssignmentHook", "CommentHook"]
+    enabled: true
+    priority: 80
+    conditions:
+      logic: "or"
+      conditions:
+        - field: "ticket.labels"
+          operator: "contains"
+          value: "environment"
+        - field: "ticket.summary"
+          operator: "regex"
+          value: "\\b(environment|staging|test env)\\b"
+          case_sensitive: false
+        - field: "ticket.components"
+          operator: "contains"
+          value: "environment"
+    metadata:
+      channels: ["#test-env", "#qa-updates"]
+
+  # User Acceptance Testing
+  - rule_id: "uat_rule"
+    name: "User Acceptance Testing"
+    description: "Track UAT related issues"
+    hook_types: ["StatusChangeHook", "AssignmentHook", "CommentHook"]
+    enabled: true
+    priority: 70
+    conditions:
+      logic: "or"
+      conditions:
+        - field: "ticket.labels"
+          operator: "contains"
+          value: "uat"
+        - field: "ticket.summary"
+          operator: "regex"
+          value: "\\b(uat|user acceptance|acceptance test)\\b"
+          case_sensitive: false
+        - field: "ticket.issue_type.name"
+          operator: "equals"
+          value: "UAT"
+    metadata:
+      channels: ["#uat", "#qa-updates"]
+
+  # High Priority Comments on QA Issues
+  - rule_id: "qa_comments_rule"
+    name: "QA Issue Comments"
+    description: "Track comments on QA-related issues"
+    hook_types: ["CommentHook"]
+    enabled: true
+    priority: 55
+    conditions:
+      logic: "and"
+      conditions:
+        - field: "event.event_type"
+          operator: "equals"
+          value: "jira:issue_commented"
+        - logic: "or"
+          conditions:
+            - field: "ticket.labels"
+              operator: "contains"
+              value: "qa"
+            - field: "ticket.components"
+              operator: "contains"
+              value: "qa"
+            - field: "event.classification.affected_teams"
+              operator: "contains"
+              value: "qa"
+    metadata:
+      channels: ["#qa-discussions"]
+
+  # Default QA Rule
+  - rule_id: "default_qa_rule"
+    name: "Default QA Updates"
+    description: "Default rule for QA team issues"
+    hook_types: ["StatusChangeHook", "AssignmentHook", "CommentHook"]
+    enabled: true
+    priority: 20
+    conditions:
+      logic: "or"
+      conditions:
+        - field: "event.project_key"
+          operator: "regex"
+          value: "^(QA|TEST)"
+        - field: "event.classification.affected_teams"
+          operator: "contains"
+          value: "qa"
+        - field: "ticket.labels"
+          operator: "contains"
+          value: "qa"
+    metadata:
+      channels: ["#qa-team"]
+
+# Last updated timestamp
+last_updated: "2025-08-15T10:00:00Z"

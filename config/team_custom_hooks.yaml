@@ -1,0 +1,69 @@
+business_hours:
+  days:
+  - monday
+  - tuesday
+  - wednesday
+  - thursday
+  end: '16:00'
+  start: '10:00'
+  timezone: America/Los_Angeles
+default_channels:
+  assignment: '#custom-assignments'
+  general: '#custom-team'
+  status_change: '#custom-updates'
+enabled: true
+notification_preferences:
+  batch_threshold: 2
+  batch_timeout_minutes: 3
+  quiet_hours:
+    enabled: true
+    end: 08:00
+    start: '20:00'
+rules:
+- conditions:
+    conditions:
+    - field: ticket.priority.name
+      operator: in
+      value:
+      - High
+      - Critical
+    - field: event.classification.urgency
+      operator: not_equals
+      value: low
+    logic: and
+  description: Route high priority items to alerts
+  enabled: true
+  hook_types:
+  - StatusChangeHook
+  - AssignmentHook
+  metadata:
+    channels:
+    - '#alerts'
+    urgency_override: high
+  name: Custom High Priority Rule
+  priority: 100
+  rule_id: custom_high_priority
+- conditions:
+    conditions:
+    - case_sensitive: false
+      field: ticket.summary
+      operator: regex
+      value: \b(urgent|asap|critical)\b
+    - field: event.classification.keywords
+      operator: contains
+      value: urgent
+    logic: or
+  description: Filter by custom keywords
+  enabled: true
+  hook_types:
+  - StatusChangeHook
+  - CommentHook
+  metadata:
+    channels:
+    - '#urgent'
+  name: Custom Keyword Filter
+  priority: 50
+  rule_id: custom_keyword_filter
+team_id: custom_team
+team_name: Custom Team
+version: 1.0.0

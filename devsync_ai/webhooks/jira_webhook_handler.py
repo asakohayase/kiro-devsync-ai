@@ -16,6 +16,7 @@ from fastapi.responses import JSONResponse
 from devsync_ai.core.agent_hook_dispatcher import AgentHookDispatcher, HookDispatchResult
 from devsync_ai.core.agent_hooks import HookRegistry
 from devsync_ai.core.hook_lifecycle_manager import HookLifecycleManager
+from devsync_ai.hooks.hook_registry_manager import initialize_hook_registry, get_hook_registry_manager, shutdown_hook_registry
 from devsync_ai.config import settings
 
 
@@ -65,7 +66,10 @@ async def initialize_dispatcher():
             max_requests_per_minute=max_requests_per_minute
         )
         
-        logger.info("Agent Hook Dispatcher initialized successfully")
+        # Initialize hook registry with all JIRA Agent Hooks
+        registry_manager = await initialize_hook_registry(_dispatcher)
+        
+        logger.info("Agent Hook Dispatcher and Registry initialized successfully")
         return _dispatcher
         
     except Exception as e:
@@ -79,11 +83,15 @@ async def shutdown_dispatcher():
     
     if _dispatcher is not None:
         try:
+            # Shutdown hook registry first
+            await shutdown_hook_registry()
+            
+            # Then shutdown dispatcher
             await _dispatcher.lifecycle_manager.stop()
             _dispatcher = None
-            logger.info("Agent Hook Dispatcher shutdown successfully")
+            logger.info("Agent Hook Dispatcher and Registry shutdown successfully")
         except Exception as e:
-            logger.error(f"Error shutting down Agent Hook Dispatcher: {e}")
+            logger.error(f"Error shutting down Agent Hook system: {e}")
 
 
 def get_client_ip(request: Request) -> str:
@@ -517,6 +525,257 @@ async def simulate_jira_event(
         return JSONResponse(
             content={
                 "error": f"Failed to simulate event: {str(e)}",
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            },
+            status_code=500
+        )
+
+@jira_webhook_router.get("/hooks/registry/status")
+async def get_hook_registry_status() -> JSONResponse:
+    """Get comprehensive hook registry status."""
+    try:
+        registry_manager = await get_hook_registry_manager()
+        if not registry_manager:
+            return JSONResponse(
+                content={"error": "Hook registry not initialized"},
+                status_code=503
+            )
+        
+        # Get system health
+        health = await registry_manager.get_system_health()
+        
+        # Get all hook statuses
+        hook_statuses = await registry_manager.get_all_hook_statuses()
+        
+        return JSONResponse(
+            content={
+                "system_health": {
+                    "total_hooks": health.total_hooks,
+                    "enabled_hooks": health.enabled_hooks,
+                    "disabled_hooks": health.disabled_hooks,
+                    "failed_hooks": health.failed_hooks,
+                    "average_execution_time_ms": health.average_execution_time_ms,
+                    "success_rate": health.success_rate,
+                    "last_health_check": health.last_health_check.isoformat(),
+                    "component_health": health.component_health,
+                    "issues": health.issues
+                },
+                "hooks": hook_statuses,
+                "available_hook_types": registry_manager.get_available_hook_types(),
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+        )
+        
+    except Exception as e:
+        logger.error(f"Failed to get hook registry status: {e}")
+        return JSONResponse(
+            content={
+                "error": f"Failed to get registry status: {str(e)}",
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            },
+            status_code=500
+        )
+
+
+@jira_webhook_router.post("/hooks/registry/reload")
+async def reload_hook_configuration() -> JSONResponse:
+    """Reload hook configuration and re-register hooks."""
+    try:
+        registry_manager = await get_hook_registry_manager()
+        if not registry_manager:
+            return JSONResponse(
+                content={"error": "Hook registry not initialized"},
+                status_code=503
+            )
+        
+        # Reload configuration
+        results = await registry_manager.reload_configuration()
+        
+        successful = len([r for r in results if r.success])
+        failed = len([r for r in results if not r.success])
+        
+        return JSONResponse(
+            content={
+                "message": f"Configuration reloaded: {successful} successful, {failed} failed",
+                "results": [
+                    {
+                        "hook_id": r.hook_id,
+                        "hook_type": r.hook_type,
+                        "success": r.success,
+                        "error_message": r.error_message,
+                        "validation_errors": r.validation_errors
+                    }
+                    for r in results
+                ],
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+        )
+        
+    except Exception as e:
+        logger.error(f"Failed to reload hook configuration: {e}")
+        return JSONResponse(
+            content={
+                "error": f"Failed to reload configuration: {str(e)}",
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            },
+            status_code=500
+        )
+
+
+@jira_webhook_router.get("/hooks/registry/teams/{team_id}")
+async def get_team_hook_configuration(team_id: str) -> JSONResponse:
+    """Get hook configuration for a specific team."""
+    try:
+        registry_manager = await get_hook_registry_manager()
+        if not registry_manager:
+            return JSONResponse(
+                content={"error": "Hook registry not initialized"},
+                status_code=503
+            )
+        
+        # Get team configuration
+        team_config = await registry_manager.config_manager.get_team_configuration(team_id)
+        
+        # Get team-specific hook statuses
+        all_hooks = await registry_manager.get_all_hook_statuses()
+        team_hooks = [hook for hook in all_hooks if hook['team_id'] == team_id]
+        
+        return JSONResponse(
+            content={
+                "team_id": team_id,
+                "configuration": team_config,
+                "active_hooks": team_hooks,
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+        )
+        
+    except Exception as e:
+        logger.error(f"Failed to get team configuration for {team_id}: {e}")
+        return JSONResponse(
+            content={
+                "error": f"Failed to get team configuration: {str(e)}",
+                "team_id": team_id,
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            },
+            status_code=500
+        )
+
+
+@jira_webhook_router.post("/hooks/registry/test/{hook_type}")
+async def test_hook_type(
+    hook_type: str,
+    request: Request
+) -> JSONResponse:
+    """Test a specific hook type with sample data."""
+    try:
+        registry_manager = await get_hook_registry_manager()
+        if not registry_manager:
+            return JSONResponse(
+                content={"error": "Hook registry not initialized"},
+                status_code=503
+            )
+        
+        # Validate hook type
+        available_types = registry_manager.get_available_hook_types()
+        if hook_type not in available_types:
+            return JSONResponse(
+                content={
+                    "error": f"Unknown hook type: {hook_type}",
+                    "available_types": available_types
+                },
+                status_code=400
+            )
+        
+        # Get test data from request
+        test_data = await request.json()
+        
+        # Create sample event for testing
+        sample_event = EnrichedEvent(
+            event_id="test-event",
+            event_type="jira:issue_updated",
+            timestamp=datetime.now(timezone.utc),
+            jira_event_data=test_data.get("jira_event_data", {}),
+            ticket_key=test_data.get("ticket_key", "TEST-123"),
+            project_key=test_data.get("project_key", "TEST"),
+            raw_payload=test_data.get("raw_payload", {}),
+            ticket_details=test_data.get("ticket_details", {}),
+            stakeholders=[],
+            classification=EventClassification(
+                category=EventCategory.STATUS_CHANGE,
+                urgency=UrgencyLevel.MEDIUM,
+                significance=SignificanceLevel.MODERATE,
+                affected_teams=["test"]
+            ),
+            context_data=test_data.get("context_data", {})
+        )
+        
+        # Find hooks of the specified type
+        registered_hooks = registry_manager.get_registered_hooks()
+        test_hooks = [
+            hook for hook in registered_hooks.values() 
+            if hook.hook_type.lower().replace('hook', '') == hook_type.replace('_', '')
+        ]
+        
+        if not test_hooks:
+            return JSONResponse(
+                content={
+                    "error": f"No registered hooks of type: {hook_type}",
+                    "registered_hook_types": list(set(h.hook_type for h in registered_hooks.values()))
+                },
+                status_code=404
+            )
+        
+        # Test each hook
+        results = []
+        for hook in test_hooks:
+            try:
+                can_handle = await hook.can_handle(sample_event)
+                
+                if can_handle:
+                    # Execute hook with test data
+                    execution_result = await hook.execute(sample_event)
+                    
+                    results.append({
+                        "hook_id": hook.hook_id,
+                        "can_handle": can_handle,
+                        "execution_result": {
+                            "status": execution_result.status.value,
+                            "execution_time_ms": execution_result.execution_time_ms,
+                            "notification_sent": execution_result.notification_sent,
+                            "errors": execution_result.errors,
+                            "metadata": execution_result.metadata
+                        }
+                    })
+                else:
+                    results.append({
+                        "hook_id": hook.hook_id,
+                        "can_handle": can_handle,
+                        "execution_result": None
+                    })
+                    
+            except Exception as e:
+                results.append({
+                    "hook_id": hook.hook_id,
+                    "can_handle": False,
+                    "execution_result": None,
+                    "error": str(e)
+                })
+        
+        return JSONResponse(
+            content={
+                "hook_type": hook_type,
+                "test_results": results,
+                "sample_event_id": sample_event.event_id,
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+        )
+        
+    except Exception as e:
+        logger.error(f"Failed to test hook type {hook_type}: {e}")
+        return JSONResponse(
+            content={
+                "error": f"Failed to test hook type: {str(e)}",
+                "hook_type": hook_type,
                 "timestamp": datetime.now(timezone.utc).isoformat()
             },
             status_code=500

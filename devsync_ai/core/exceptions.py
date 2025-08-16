@@ -186,3 +186,20 @@ class ConfigurationError(TemplateError):
         self.config_key = config_key
         self.expected_type = expected_type
         self.recoverable = False  # Config errors usually require manual intervention
+
+
+class ValidationError(TemplateError):
+    """Raised when validation fails."""
+    
+    def __init__(self, 
+                 message: str, 
+                 validation_errors: Optional[List[str]] = None,
+                 field_name: Optional[str] = None):
+        super().__init__(
+            message,
+            severity=ErrorSeverity.MEDIUM,
+            category=ErrorCategory.DATA_VALIDATION
+        )
+        self.validation_errors = validation_errors or []
+        self.field_name = field_name
+        self.recoverable = True

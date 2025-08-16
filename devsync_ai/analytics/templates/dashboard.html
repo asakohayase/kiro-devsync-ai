@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DevSync AI Analytics Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .gradient-bg {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .card-hover:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+        }
+        .status-healthy { color: #10b981; }
+        .status-warning { color: #f59e0b; }
+        .status-critical { color: #ef4444; }
+        .pulse-dot {
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-white">
+    <!-- Header -->
+    <header class="gradient-bg shadow-lg">
+        <div class="container mx-auto px-6 py-4">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center">
+                    <h1 class="text-2xl font-bold">DevSync AI Analytics</h1>
+                    <span class="ml-4 px-3 py-1 bg-green-500 text-white rounded-full text-sm">
+                        <span class="pulse-dot inline-block w-2 h-2 bg-white rounded-full mr-2"></span>
+                        Live
+                    </span>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <div id="connection-status" class="text-sm">
+                        <span class="status-healthy">● Connected</span>
+                    </div>
+                    <button id="voice-btn" class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg">
+                        🎤 Voice Query
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Dashboard -->
+    <div class="container mx-auto px-6 py-8">
+        <!-- System Overview Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            <div class="bg-gray-800 rounded-lg p-6 card-hover transition-all duration-300">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-gray-400 text-sm">System Health</p>
+                        <p id="system-health" class="text-2xl font-bold status-healthy">Healthy</p>
+                    </div>
+                    <div class="text-3xl">💚</div>
+                </div>
+            </div>
+            
+            <div class="bg-gray-800 rounded-lg p-6 card-hover transition-all duration-300">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-gray-400 text-sm">Active Hooks</p>
+                        <p id="active-hooks" class="text-2xl font-bold">12</p>
+                    </div>
+                    <div class="text-3xl">🔗</div>
+                </div>
+            </div>
+            
+            <div class="bg-gray-800 rounded-lg p-6 card-hover transition-all duration-300">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-gray-400 text-sm">Success Rate</p>
+                        <p id="success-rate" class="text-2xl font-bold">96.5%</p>
+                    </div>
+                    <div class="text-3xl">✅</div>
+                </div>
+            </div>
+            
+            <div class="bg-gray-800 rounded-lg p-6 card-hover transition-all duration-300">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-gray-400 text-sm">Avg Response</p>
+                        <p id="avg-response" class="text-2xl font-bold">1.2s</p>
+                    </div>
+                    <div class="text-3xl">⚡</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Charts Row -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+            <!-- Performance Trends Chart -->
+            <div class="bg-gray-800 rounded-lg p-6">
+                <h3 class="text-xl font-semibold mb-4">Performance Trends</h3>
+                <canvas id="performance-chart" width="400" height="200"></canvas>
+            </div>
+            
+            <!-- Team Productivity Chart -->
+            <div class="bg-gray-800 rounded-lg p-6">
+                <h3 class="text-xl font-semibold mb-4">Team Productivity</h3>
+                <canvas id="productivity-chart" width="400" height="200"></canvas>
+            </div>
+        </div>
+
+        <!-- Hook Status Table -->
+        <div class="bg-gray-800 rounded-lg p-6 mb-8">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-xl font-semibold">Hook Status</h3>
+                <div class="flex space-x-2">
+                    <select id="team-filter" class="bg-gray-700 text-white px-3 py-1 rounded">
+                        <option value="">All Teams</option>
+                        <option value="frontend-team">Frontend Team</option>
+                        <option value="backend-team">Backend Team</option>
+                        <option value="devops-team">DevOps Team</option>
+                    </select>
+                    <select id="hook-type-filter" class="bg-gray-700 text-white px-3 py-1 rounded">
+                        <option value="">All Types</option>
+                        <option value="status_change">Status Change</option>
+                        <option value="assignment">Assignment</option>
+                        <option value="blocker">Blocker</option>
+                        <option value="comment">Comment</option>
+                    </select>
+                </div>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left">
+                    <thead>
+                        <tr class="border-b border-gray-700">
+                            <th class="pb-3">Hook ID</th>
+                            <th class="pb-3">Type</th>
+                            <th class="pb-3">Team</th>
+                            <th class="pb-3">Executions</th>
+                            <th class="pb-3">Success Rate</th>
+                            <th class="pb-3">Avg Time</th>
+                            <th class="pb-3">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="hooks-table-body">
+                        <!-- Dynamic content will be inserted here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Alerts and Insights -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <!-- Recent Alerts -->
+            <div class="bg-gray-800 rounded-lg p-6">
+                <h3 class="text-xl font-semibold mb-4">Recent Alerts</h3>
+                <div id="alerts-container" class="space-y-3">
+                    <!-- Dynamic alerts will be inserted here -->
+                </div>
+            </div>
+            
+            <!-- AI Insights -->
+            <div class="bg-gray-800 rounded-lg p-6">
+                <h3 class="text-xl font-semibold mb-4">AI Insights</h3>
+                <div id="insights-container" class="space-y-3">
+                    <!-- Dynamic insights will be inserted here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Voice Query Modal -->
+    <div id="voice-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+        <div class="bg-gray-800 rounded-lg p-8 max-w-md w-full mx-4">
+            <h3 class="text-xl font-semibold mb-4">Voice Query</h3>
+            <div class="text-center mb-4">
+                <div id="voice-indicator" class="w-16 h-16 bg-red-500 rounded-full mx-auto mb-4 flex items-center justify-center">
+                    🎤
+                </div>
+                <p id="voice-status">Click to start recording...</p>
+            </div>
+            <div class="flex space-x-4">
+                <button id="start-recording" class="flex-1 bg-red-600 hover:bg-red-700 px-4 py-2 rounded-lg">
+                    Start Recording
+                </button>
+                <button id="close-voice-modal" class="flex-1 bg-gray-600 hover:bg-gray-700 px-4 py-2 rounded-lg">
+                    Close
+                </button>
+            </div>
+            <div id="voice-response" class="mt-4 p-4 bg-gray-700 rounded-lg hidden">
+                <!-- Voice response will appear here -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // WebSocket connection for real-time updates
+        let ws;
+        let performanceChart;
+        let productivityChart;
+
+        function connectWebSocket() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/ws`;
+            
+            ws = new WebSocket(wsUrl);
+            
+            ws.onopen = function() {
+                console.log('WebSocket connected');
+                updateConnectionStatus('Connected', 'status-healthy');
+            };
+            
+            ws.onmessage = function(event) {
+                const data = JSON.parse(event.data);
+                handleWebSocketMessage(data);
+            };
+            
+            ws.onclose = function() {
+                console.log('WebSocket disconnected');
+                updateConnectionStatus('Disconnected', 'status-critical');
+                // Attempt to reconnect after 5 seconds
+                setTimeout(connectWebSocket, 5000);
+            };
+            
+            ws.onerror = function(error) {
+                console.error('WebSocket error:', error);
+                updateConnectionStatus('Error', 'status-critical');
+            };
+        }
+
+        function updateConnectionStatus(status, className) {
+            const statusElement = document.getElementById('connection-status');
+            statusElement.innerHTML = `<span class="${className}">● ${status}</span>`;
+        }
+
+        function handleWebSocketMessage(data) {
+            switch(data.type) {
+                case 'metrics_update':
+                    updateDashboard(data);
+                    break;
+                case 'alert':
+                    addAlert(data.alert);
+                    break;
+                case 'initial_data':
+                    initializeDashboard(data);
+                    break;
+            }
+        }
+
+        function updateDashboard(data) {
+            // Update system metrics cards
+            if (data.system_metrics) {
+                const metrics = data.system_metrics;
+                document.getElementById('system-health').textContent = metrics.health_status || 'Unknown';
+                document.getElementById('system-health').className = `text-2xl font-bold status-${metrics.health_status || 'unknown'}`;
+                
+                document.getElementById('success-rate').textContent = 
+                    `${(100 - (metrics.error_rate_percent || 0)).toFixed(1)}%`;
+                document.getElementById('avg-response').textContent = 
+                    `${(metrics.average_response_time_ms || 0) / 1000}s`;
+            }
+
+            // Update hook metrics
+            if (data.hook_metrics) {
+                updateHooksTable(data.hook_metrics);
+                document.getElementById('active-hooks').textContent = data.hook_metrics.length;
+            }
+
+            // Update charts
+            updateCharts(data);
+        }
+
+        function updateHooksTable(hookMetrics) {
+            const tbody = document.getElementById('hooks-table-body');
+            tbody.innerHTML = '';
+
+            hookMetrics.forEach(hook => {
+                const row = document.createElement('tr');
+                row.className = 'border-b border-gray-700';
+                
+                const statusClass = hook.health_status === 'healthy' ? 'status-healthy' : 
+                                  hook.health_status === 'warning' ? 'status-warning' : 'status-critical';
+                
+                row.innerHTML = `
+                    <td class="py-3">${hook.hook_id}</td>
+                    <td class="py-3">${hook.hook_type}</td>
+                    <td class="py-3">${hook.team_id}</td>
+                    <td class="py-3">${hook.total_executions}</td>
+                    <td class="py-3">${(hook.success_rate * 100).toFixed(1)}%</td>
+                    <td class="py-3">${hook.average_execution_time.toFixed(0)}ms</td>
+                    <td class="py-3"><span class="${statusClass}">● ${hook.health_status}</span></td>
+                `;
+                
+                tbody.appendChild(row);
+            });
+        }
+
+        function addAlert(alert) {
+            const container = document.getElementById('alerts-container');
+            const alertElement = document.createElement('div');
+            
+            const severityClass = alert.severity === 'critical' ? 'border-red-500' : 
+                                alert.severity === 'warning' ? 'border-yellow-500' : 'border-blue-500';
+            
+            alertElement.className = `p-3 border-l-4 ${severityClass} bg-gray-700 rounded`;
+            alertElement.innerHTML = `
+                <div class="flex justify-between items-start">
+                    <div>
+                        <p class="font-semibold">${alert.title || alert.type}</p>
+                        <p class="text-sm text-gray-300">${alert.message}</p>
+                        <p class="text-xs text-gray-400">${new Date().toLocaleTimeString()}</p>
+                    </div>
+                    <span class="text-xs px-2 py-1 bg-gray-600 rounded">${alert.severity}</span>
+                </div>
+            `;
+            
+            container.insertBefore(alertElement, container.firstChild);
+            
+            // Keep only last 5 alerts
+            while (container.children.length > 5) {
+                container.removeChild(container.lastChild);
+            }
+        }
+
+        function initializeCharts() {
+            // Performance Trends Chart
+            const perfCtx = document.getElementById('performance-chart').getContext('2d');
+            performanceChart = new Chart(perfCtx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Response Time (ms)',
+                        data: [],
+                        borderColor: '#3b82f6',
+                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                        tension: 0.4
+                    }, {
+                        label: 'Error Rate (%)',
+                        data: [],
+                        borderColor: '#ef4444',
+                        backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                        tension: 0.4,
+                        yAxisID: 'y1'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            labels: { color: 'white' }
+                        }
+                    },
+                    scales: {
+                        x: { 
+                            ticks: { color: 'white' },
+                            grid: { color: 'rgba(255,255,255,0.1)' }
+                        },
+                        y: { 
+                            ticks: { color: 'white' },
+                            grid: { color: 'rgba(255,255,255,0.1)' }
+                        },
+                        y1: {
+                            type: 'linear',
+                            display: true,
+                            position: 'right',
+                            ticks: { color: 'white' },
+                            grid: { drawOnChartArea: false }
+                        }
+                    }
+                }
+            });
+
+            // Team Productivity Chart
+            const prodCtx = document.getElementById('productivity-chart').getContext('2d');
+            productivityChart = new Chart(prodCtx, {
+                type: 'bar',
+                data: {
+                    labels: ['Frontend', 'Backend', 'DevOps'],
+                    datasets: [{
+                        label: 'Productivity Score',
+                        data: [85, 92, 78],
+                        backgroundColor: ['#10b981', '#3b82f6', '#f59e0b'],
+                        borderRadius: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            labels: { color: 'white' }
+                        }
+                    },
+                    scales: {
+                        x: { 
+                            ticks: { color: 'white' },
+                            grid: { color: 'rgba(255,255,255,0.1)' }
+                        },
+                        y: { 
+                            ticks: { color: 'white' },
+                            grid: { color: 'rgba(255,255,255,0.1)' },
+                            beginAtZero: true,
+                            max: 100
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateCharts(data) {
+            if (data.system_metrics && data.system_metrics.history) {
+                const history = data.system_metrics.history;
+                const labels = history.map(h => new Date(h.timestamp).toLocaleTimeString());
+                const responseTimes = history.map(h => h.average_response_time);
+                const errorRates = history.map(h => h.error_rate);
+
+                performanceChart.data.labels = labels;
+                performanceChart.data.datasets[0].data = responseTimes;
+                performanceChart.data.datasets[1].data = errorRates;
+                performanceChart.update('none');
+            }
+
+            if (data.team_metrics) {
+                const teamNames = data.team_metrics.map(t => t.team_id);
+                const productivityScores = data.team_metrics.map(t => t.productivity_score);
+
+                productivityChart.data.labels = teamNames;
+                productivityChart.data.datasets[0].data = productivityScores;
+                productivityChart.update('none');
+            }
+        }
+
+        // Voice Query Functionality
+        function initializeVoiceQuery() {
+            const voiceBtn = document.getElementById('voice-btn');
+            const voiceModal = document.getElementById('voice-modal');
+            const closeModal = document.getElementById('close-voice-modal');
+            const startRecording = document.getElementById('start-recording');
+
+            voiceBtn.addEventListener('click', () => {
+                voiceModal.classList.remove('hidden');
+                voiceModal.classList.add('flex');
+            });
+
+            closeModal.addEventListener('click', () => {
+                voiceModal.classList.add('hidden');
+                voiceModal.classList.remove('flex');
+            });
+
+            startRecording.addEventListener('click', () => {
+                // Mock voice recognition (in production, would use Web Speech API)
+                document.getElementById('voice-status').textContent = 'Listening...';
+                document.getElementById('voice-indicator').style.backgroundColor = '#ef4444';
+                
+                setTimeout(() => {
+                    const mockQuery = "How is our current sprint health?";
+                    processVoiceQuery(mockQuery);
+                }, 2000);
+            });
+        }
+
+        async function processVoiceQuery(query) {
+            try {
+                const response = await fetch('/api/voice/query', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ query })
+                });
+                
+                const result = await response.json();
+                
+                document.getElementById('voice-status').textContent = 'Processing...';
+                document.getElementById('voice-indicator').style.backgroundColor = '#10b981';
+                
+                const responseDiv = document.getElementById('voice-response');
+                responseDiv.innerHTML = `
+                    <p><strong>Query:</strong> ${result.query}</p>
+                    <p><strong>Response:</strong> ${result.response}</p>
+                `;
+                responseDiv.classList.remove('hidden');
+                
+            } catch (error) {
+                console.error('Voice query error:', error);
+                document.getElementById('voice-status').textContent = 'Error processing query';
+            }
+        }
+
+        // Filter functionality
+        function initializeFilters() {
+            const teamFilter = document.getElementById('team-filter');
+            const hookTypeFilter = document.getElementById('hook-type-filter');
+
+            [teamFilter, hookTypeFilter].forEach(filter => {
+                filter.addEventListener('change', () => {
+                    // Request filtered data
+                    if (ws && ws.readyState === WebSocket.OPEN) {
+                        ws.send(JSON.stringify({
+                            type: 'request_data',
+                            filters: {
+                                team: teamFilter.value,
+                                hookType: hookTypeFilter.value
+                            }
+                        }));
+                    }
+                });
+            });
+        }
+
+        // Initialize dashboard
+        function initializeDashboard(data) {
+            updateDashboard(data);
+            
+            // Add some mock insights
+            const insightsContainer = document.getElementById('insights-container');
+            const mockInsights = [
+                {
+                    title: "Sprint Velocity Improvement",
+                    message: "Frontend team velocity increased 15% this sprint due to automated coordination",
+                    confidence: "85%"
+                },
+                {
+                    title: "Blocker Resolution Optimization",
+                    message: "Average blocker resolution time reduced from 48h to 24h with AI-powered escalation",
+                    confidence: "92%"
+                },
+                {
+                    title: "Communication Efficiency",
+                    message: "Manual status updates reduced by 60% through intelligent notifications",
+                    confidence: "78%"
+                }
+            ];
+
+            mockInsights.forEach(insight => {
+                const insightElement = document.createElement('div');
+                insightElement.className = 'p-3 bg-gray-700 rounded border-l-4 border-blue-500';
+                insightElement.innerHTML = `
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <p class="font-semibold">${insight.title}</p>
+                            <p class="text-sm text-gray-300">${insight.message}</p>
+                        </div>
+                        <span class="text-xs px-2 py-1 bg-blue-600 rounded">${insight.confidence}</span>
+                    </div>
+                `;
+                insightsContainer.appendChild(insightElement);
+            });
+        }
+
+        // Start everything when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            connectWebSocket();
+            initializeCharts();
+            initializeVoiceQuery();
+            initializeFilters();
+            
+            // Request initial data
+            setTimeout(() => {
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({ type: 'request_data' }));
+                }
+            }, 1000);
+        });
+    </script>
+</body>
+</html>

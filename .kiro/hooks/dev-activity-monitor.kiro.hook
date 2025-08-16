@@ -1,0 +1,24 @@
+{
+  "enabled": true,
+  "name": "Development Activity Monitor",
+  "description": "Monitors file changes in Python files, new file creation, config modifications, and commit messages, then sends formatted notifications to Slack with developer info, changed files, and activity summaries",
+  "version": "1",
+  "when": {
+    "type": "fileEdited",
+    "patterns": [
+      "devsync_ai/**/*.py",
+      "**/*.py",
+      "config/**/*",
+      "*.md",
+      "*.yaml",
+      "*.yml",
+      "*.json",
+      "*.txt",
+      "*.toml"
+    ]
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "Analyze the file changes and development activity that just occurred. Generate a concise summary of what was modified and create a Slack notification using the existing slack service at devsync_ai/services/slack.py. \n\nFormat the notification to include:\n1. Developer name (extract from git or system info)\n2. List of files that were changed\n3. Brief description of the changes made\n4. Timestamp of the activity\n5. Use appropriate Slack formatting and templates from devsync_ai/services/slack_templates.py\n\nSend the formatted message to the team Slack channel. Focus on being informative but concise - highlight the key changes without overwhelming the team with too much detail."
+  }
+}
