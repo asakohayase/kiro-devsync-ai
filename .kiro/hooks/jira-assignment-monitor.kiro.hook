@@ -1,0 +1,21 @@
+{
+  "enabled": true,
+  "name": "JIRA Assignment Monitor",
+  "description": "Monitors JIRA webhook events for ticket assignments, reassignments, and unassignments, then sends intelligent contextual notifications to Slack with workload analysis and actionable information",
+  "version": "1",
+  "when": {
+    "type": "fileEdited",
+    "patterns": [
+      "devsync_ai/webhooks/jira_webhook_handler.py",
+      "devsync_ai/services/jira.py",
+      "devsync_ai/services/slack.py",
+      "devsync_ai/core/enhanced_notification_handler.py",
+      "config/jira_webhook_config.example.yaml",
+      "config/team_config_*.yaml"
+    ]
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "A JIRA assignment change has been detected. Please analyze the incoming JIRA webhook payload and:\n\n1. **Parse Assignment Data**: Extract ticket key, title, previous assignee, new assignee, priority, status, story points, sprint info, reporter, and timestamp from the webhook payload.\n\n2. **Analyze Workload Impact**: \n   - Check current assignee workload using existing workload tracking\n   - Identify potential workload imbalances\n   - Flag conflicts with high-priority items or sprint capacity\n   - Detect assignment patterns that may need attention\n\n3. **Generate Contextual Notifications** based on the scenario:\n   - NEW ASSIGNMENT: \"🎯 @assignee you've been assigned TICKET-123: Title\"\n   - REASSIGNMENT: \"🔄 TICKET-123 moved from @previous to @new assignee\"  \n   - UNASSIGNMENT: \"❓ TICKET-123 is now unassigned and needs an owner\"\n   - WORKLOAD WARNING: \"⚠️ @assignee now has X high-priority tickets\"\n\n4. **Send Targeted Slack Notifications**:\n   - Direct mention to new assignee\n   - Optional mention to previous assignee for handoff context\n   - Team channel notification for visibility\n   - Project manager notification for workload concerns\n   - Use existing Slack service at devsync_ai/services/slack_service.py\n   - Include actionable information: JIRA link, priority, status, effort estimate, due date, sprint info\n\n5. **Integration Requirements**:\n   - Use existing JIRA service at devsync_ai/services/jira_service.py\n   - Leverage enhanced notification handler for intelligent routing\n   - Use team configuration system for personalized notifications\n   - Follow existing notification templates and formatting patterns\n\nFocus on preventing workload imbalances, ensuring smooth handoffs, and keeping team members informed of their assignment changes with actionable context."
+  }
+}

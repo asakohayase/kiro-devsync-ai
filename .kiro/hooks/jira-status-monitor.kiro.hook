@@ -1,0 +1,20 @@
+{
+  "enabled": true,
+  "name": "JIRA Status Monitor",
+  "description": "Monitors JIRA webhook events for ticket status transitions, priority changes, and sprint updates, then sends formatted notifications to appropriate Slack channels with urgency indicators and team mentions",
+  "version": "1",
+  "when": {
+    "type": "fileEdited",
+    "patterns": [
+      "devsync_ai/webhooks/routes.py",
+      "devsync_ai/services/jira_service.py",
+      "devsync_ai/services/slack_service.py",
+      "devsync_ai/core/enhanced_notification_handler.py",
+      "devsync_ai/webhooks/jira_webhook_handler.py"
+    ]
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "A JIRA webhook integration file has been modified. Please analyze the changes and implement a comprehensive JIRA status monitoring system that:\n\n1. **Webhook Processing**: Parse incoming JIRA webhook payloads to extract:\n   - Ticket key (e.g., DEV-123)\n   - Status transitions (old → new status)\n   - Priority changes (Low → High → Critical)\n   - Assignee and reporter information\n   - Ticket summary and description\n   - Sprint status changes\n   - Transition timestamps\n\n2. **Event Classification**: Categorize events by urgency:\n   - Critical: Transitions to \"Blocked\", High/Critical priority changes\n   - Normal: Standard workflow progressions (To Do → In Progress → Done)\n   - Sprint-related: Sprint assignments, sprint status changes\n\n3. **Slack Notification Formatting**: Create contextual messages including:\n   - Ticket identifier with clickable JIRA link\n   - Clear status transition display (Old Status → New Status)\n   - Assignee mentions (@username) for relevant team members\n   - Ticket summary and key details\n   - Urgency indicators (🔴 Critical, 🟡 Normal, 🔵 Sprint)\n   - Formatted timestamp of change\n\n4. **Intelligent Routing**: Route notifications to appropriate channels based on:\n   - Project/component mapping\n   - Team assignments\n   - Urgency level\n   - Sprint associations\n\n5. **Integration Requirements**: \n   - Use existing JIRA service at devsync_ai/services/jira_service.py\n   - Leverage Slack service at devsync_ai/services/slack_service.py\n   - Integrate with webhook infrastructure in devsync_ai/webhooks/routes.py\n   - Utilize enhanced notification handler for batching and deduplication\n   - Apply status-specific message templates from notification system\n\n6. **Anti-Spam Features**:\n   - Implement intelligent batching for rapid status changes\n   - Deduplicate similar notifications within time windows\n   - Provide digest summaries for bulk updates\n\nFocus on actionable notifications that enhance team coordination without creating notification fatigue. Ensure the system scales well with high-volume JIRA environments and provides clear, contextual information for quick decision-making."
+  }
+}

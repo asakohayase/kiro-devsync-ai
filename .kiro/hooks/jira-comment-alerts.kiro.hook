@@ -1,0 +1,21 @@
+{
+  "enabled": true,
+  "name": "JIRA Comment Intelligence",
+  "description": "Monitors comments on high-priority JIRA tickets and sends context-aware Slack notifications for urgent comments, questions, blockers, and stakeholder updates",
+  "version": "1",
+  "when": {
+    "type": "fileEdited",
+    "patterns": [
+      "devsync_ai/webhooks/jira_webhook_handler.py",
+      "devsync_ai/services/jira.py",
+      "devsync_ai/services/slack.py",
+      "devsync_ai/core/enhanced_notification_handler.py",
+      "config/jira_webhook_config.example.yaml",
+      "config/team_config_production.yaml"
+    ]
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "A JIRA webhook system file has been modified. Please analyze the changes and implement intelligent comment monitoring that:\n\n1. **WEBHOOK PROCESSING**: Enhance JIRA webhook handling to detect comment events on:\n   - High/Critical priority tickets\n   - Blocked tickets  \n   - Tickets assigned to key team members\n   - Comments with urgent keywords (@mentions, \"urgent\", \"blocker\", \"help needed\")\n   - Active sprint tickets near deadline\n   - Comments from stakeholders/product managers\n\n2. **COMMENT ANALYSIS**: Parse webhook payloads to extract:\n   - Ticket key, title, priority, status, assignee\n   - Comment author, timestamp, content\n   - Sprint information and due dates\n   - Previous comment context for ongoing discussions\n   - Urgent keyword detection and @mention parsing\n\n3. **INTELLIGENT ROUTING**: Generate context-aware Slack notifications:\n   - 🚨 URGENT COMMENT alerts for critical issues\n   - ❓ QUESTION alerts when help is needed\n   - 🔓 BLOCKER UPDATE notifications\n   - 👔 STAKEHOLDER comment alerts\n   - Direct messages to assignees for urgent items\n   - Team channel notifications for awareness\n\n4. **RICH FORMATTING**: Create Slack messages with:\n   - Priority indicators (🔴 Critical, 🟠 High)\n   - Truncated comment previews (150 chars + \"...\")\n   - Quick action links to view full comments\n   - Thread replies for ongoing conversations\n   - Current assignee mentions\n\n5. **INTEGRATION**: Leverage existing services:\n   - devsync_ai/services/jira_service.py for JIRA operations\n   - devsync_ai/services/slack_service.py for notifications\n   - Enhanced notification handler for smart batching\n   - Team configuration for personalized routing\n\nFocus on preventing missed critical conversations while avoiding notification spam for routine comments on lower-priority tickets. Ensure the system integrates seamlessly with existing JIRA webhook processing and notification infrastructure."
+  }
+}

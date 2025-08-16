@@ -1,0 +1,20 @@
+{
+  "enabled": true,
+  "name": "Weekly Changelog Generator",
+  "description": "Automatically generates comprehensive weekly changelogs by aggregating development activity across GitHub, JIRA, and team communications. Triggers on schedule (Fridays 5PM), manual requests, sprint ends, releases, and month ends. Collects data from GitHub PRs/commits, JIRA tickets, Slack discussions, and team metrics. Categorizes content into NEW FEATURES, BUG FIXES, IMPROVEMENTS, TECHNICAL, BREAKING CHANGES, and SECURITY. Generates multiple formats (markdown, Slack summary, executive summary, technical details, customer notes) and distributes through various channels.",
+  "version": "1",
+  "when": {
+    "type": "fileEdited",
+    "patterns": [
+      "config/team_config_*.yaml",
+      "devsync_ai/services/github_service.py",
+      "devsync_ai/services/jira_service.py",
+      "devsync_ai/services/slack_service.py",
+      "docs/changelogs/"
+    ]
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "Generate a comprehensive weekly changelog by:\n\n1. **Data Collection Phase**:\n   - Query GitHub API for merged PRs, commits, and releases from the past week\n   - Fetch completed JIRA tickets, resolved bugs, and delivered stories\n   - Analyze Slack messages for major decisions and announcements\n   - Collect development metrics (velocity, throughput, cycle time)\n\n2. **Content Categorization**:\n   - NEW FEATURES: User-facing functionality and capabilities added\n   - BUG FIXES: Issues resolved and stability improvements\n   - IMPROVEMENTS: Performance optimizations and code quality enhancements\n   - TECHNICAL: Infrastructure changes, dependency updates, refactoring\n   - BREAKING CHANGES: API changes or compatibility impacts\n   - SECURITY: Vulnerability fixes and security enhancements\n\n3. **Multi-Format Generation**:\n   - Create markdown changelog for /docs/changelogs/week-YYYY-MM-DD.md\n   - Generate Slack-friendly summary with key highlights and metrics\n   - Produce executive summary focusing on business impact\n   - Compile technical details for development team reference\n   - Create customer-facing release notes (filtered for external impact)\n\n4. **Content Enhancement**:\n   - Include contributor recognition and team accomplishments\n   - Add relevant metrics (PRs merged, tickets completed, bugs fixed)\n   - Highlight sprint goal progress and milestone achievements\n   - Provide upcoming work preview and next week priorities\n   - Include team velocity trends and productivity insights\n\n5. **Multi-Channel Distribution**:\n   - Save versioned markdown file in /docs/changelogs/\n   - Post formatted summary to #team-updates Slack channel\n   - Send executive summary to #stakeholder-updates\n   - Create GitHub release notes if version is tagged\n   - Email digest to configured external stakeholders\n\n6. **Analytics Integration**:\n   - Track team velocity trends and productivity metrics\n   - Monitor code quality improvements and technical debt reduction\n   - Analyze blocker resolution times and process improvements\n   - Calculate sprint goal achievement rates and success patterns\n   - Generate contributor activity levels and recognition data\n\nUse the existing DevSync AI services (GitHub, JIRA, Slack) and leverage notification templates for consistent formatting. Focus on creating actionable, well-formatted changelogs that tell the story of weekly progress and celebrate team achievements while providing clear visibility into development momentum and impact."
+  }
+}
