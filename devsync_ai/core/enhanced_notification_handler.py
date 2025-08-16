@@ -1,695 +1,642 @@
-"""Enhanced notification handler with integrated formatter system."""
+"""
+Enhanced notification handler that orchestrates all notification processing components.
+Integrates filtering, deduplication, routing, batching, and scheduling.
+"""
 
 import logging
-from typing import Dict, List, Any, Optional, Union
-from datetime import datetime, timedelta
+import asyncio
+from typing import Dict, List, Any, Optional, Tuple, Union
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta, time
 from enum import Enum
 
-from .formatter_factory import (
-    SlackMessageFormatterFactory, MessageType, FormatterOptions,
-    ProcessingResult, TeamConfig, ChannelConfig
-)
-from .config_manager import (
-    FlexibleConfigurationManager, default_config_manager
-)
-from .error_handler import (
-    ComprehensiveErrorHandler, default_error_handler
-)
-from .message_batcher import (
-    MessageBatcher, BatchableMessage, ContentType, default_message_batcher
-)
-from .interactive_elements import (
-    InteractiveElementBuilder, default_interactive_builder
-)
-from .message_formatter import SlackMessage, TemplateConfig
+from .channel_router import ChannelRouter, RoutingContext, NotificationType, NotificationUrgency
+from .notification_deduplicator import NotificationDeduplicator, DeduplicationResult
+from .smart_message_batcher import SmartMessageBatcher, BatchableMessage, ContentType
+from .template_registry import create_end_to_end_message
+from .message_formatter import TemplateConfig, SlackMessage
 
 
-class NotificationPriority(Enum):
-    """Notification priority levels."""
-    LOW = "low"
-    MEDIUM = "medium"
-    HIGH = "high"
-    CRITICAL = "critical"
-
-
-class NotificationStatus(Enum):
-    """Notification processing status."""
-    PENDING = "pending"
-    PROCESSING = "processing"
-    SENT = "sent"
-    FAILED = "failed"
-    BATCHED = "batched"
-    RETRYING = "retrying"
+class ProcessingDecision(Enum):
+    """Decisions for notification processing."""
+    SEND_IMMEDIATELY = "send_immediately"
+    BATCH_AND_SEND = "batch_and_send"
+    SCHEDULE_FOR_WORK_HOURS = "schedule_for_work_hours"
+    FILTER_OUT = "filter_out"
+    DUPLICATE_SKIP = "duplicate_skip"
+    RATE_LIMITED = "rate_limited"
+    ERROR_FALLBACK = "error_fallback"
 
 
 @dataclass
-class NotificationRequest:
-    """Notification request with metadata."""
-    id: str
-    notification_type: str
+class WorkHoursConfig:
+    """Configuration for work hours."""
+    enabled: bool = True
+    start_hour: int = 9  # 9 AM
+    end_hour: int = 17   # 5 PM
+    timezone: str = "UTC"
+    work_days: List[int] = field(default_factory=lambda: [0, 1, 2, 3, 4])  # Mon-Fri
+    urgent_bypass: bool = True  # Allow urgent notifications outside work hours
+
+
+@dataclass
+class FilterConfig:
+    """Configuration for notification filtering."""
+    enabled: bool = True
+    min_priority_level: str = "low"  # low, medium, high, critical
+    blocked_authors: List[str] = field(default_factory=list)
+    blocked_repositories: List[str] = field(default_factory=list)
+    blocked_projects: List[str] = field(default_factory=list)
+    allowed_notification_types: Optional[List[NotificationType]] = None
+    custom_filters: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class NotificationContext:
+    """Context for notification processing."""
+    notification_type: NotificationType
+    event_type: str
     data: Dict[str, Any]
-    channel_id: Optional[str] = None
-    user_id: Optional[str] = None
-    priority: NotificationPriority = NotificationPriority.MEDIUM
-    batch_eligible: bool = True
-    interactive: bool = True
-    created_at: datetime = field(default_factory=datetime.now)
-    scheduled_at: Optional[datetime] = None
-    retry_count: int = 0
-    max_retries: int = 3
+    team_id: str
+    author: Optional[str] = None
+    channel_override: Optional[str] = None
+    priority_override: Optional[str] = None
+    timestamp: datetime = field(default_factory=datetime.now)
     metadata: Dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
-class NotificationResult:
+class ProcessingResult:
     """Result of notification processing."""
-    request_id: str
-    status: NotificationStatus
+    decision: ProcessingDecision
+    channel: Optional[str] = None
     message: Optional[SlackMessage] = None
-    error: Optional[str] = None
-    sent_at: Optional[datetime] = None
-    batch_id: Optional[str] = None
+    scheduled_for: Optional[datetime] = None
+    reason: str = ""
+    deduplication_result: Optional[DeduplicationResult] = None
+    routing_context: Optional[RoutingContext] = None
     processing_time_ms: float = 0.0
-    fallback_used: bool = False
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    errors: List[str] = field(default_factory=list)
 
 
 class EnhancedNotificationHandler:
-    """Enhanced notification handler with integrated formatter system."""
+    """Main handler that orchestrates all notification processing components."""
     
-    def __init__(self, 
-                 slack_client,
-                 supabase_client=None,
-                 config: Optional[TemplateConfig] = None,
-                 config_manager: Optional[FlexibleConfigurationManager] = None,
-                 error_handler: Optional[ComprehensiveErrorHandler] = None,
-                 message_batcher: Optional[MessageBatcher] = None):
+    def __init__(self,
+                 router: Optional[ChannelRouter] = None,
+                 deduplicator: Optional[NotificationDeduplicator] = None,
+                 batcher: Optional[SmartMessageBatcher] = None,
+                 work_hours_config: Optional[WorkHoursConfig] = None,
+                 filter_config: Optional[FilterConfig] = None,
+                 template_config: Optional[TemplateConfig] = None,
+                 supabase_client=None):
         """Initialize enhanced notification handler."""
         
-        # Core clients
-        self.slack = slack_client
-        self.supabase = supabase_client
-        
-        # Integrated systems
-        self.config_manager = config_manager or default_config_manager
-        self.error_handler = error_handler or default_error_handler
-        self.message_batcher = message_batcher or default_message_batcher
-        
-        # Add the new formatter
-        self.message_formatter = SlackMessageFormatterFactory(config)
-        
-        # Interactive elements builder
-        self.interactive_builder = default_interactive_builder
-        
-        # Logging
         self.logger = logging.getLogger(__name__)
         
-        # Notification tracking
-        self._pending_notifications: Dict[str, NotificationRequest] = {}
-        self._processing_stats = {
-            'total_processed': 0,
-            'successful': 0,
-            'failed': 0,
-            'batched': 0,
-            'fallback_used': 0
+        # Core components
+        self.router = router or ChannelRouter()
+        self.deduplicator = deduplicator or NotificationDeduplicator(supabase_client)
+        self.batcher = batcher or SmartMessageBatcher()
+        
+        # Configuration
+        self.work_hours_config = work_hours_config or WorkHoursConfig()
+        self.filter_config = filter_config or FilterConfig()
+        self.template_config = template_config or TemplateConfig(team_id="default")
+        
+        # Database client
+        self.supabase = supabase_client
+        
+        # Processing statistics
+        self._stats = {
+            "total_processed": 0,
+            "sent_immediately": 0,
+            "batched": 0,
+            "scheduled": 0,
+            "filtered_out": 0,
+            "duplicates_skipped": 0,
+            "rate_limited": 0,
+            "errors": 0,
+            "processing_time_total_ms": 0.0
         }
         
-        # Configure formatter with team settings
-        self._configure_formatter()
+        # Error tracking
+        self._recent_errors: List[Dict[str, Any]] = []
         
         self.logger.info("EnhancedNotificationHandler initialized")
     
-    def _configure_formatter(self):
-        """Configure formatter with current team settings."""
+    async def process_notification(self, context: NotificationContext) -> ProcessingResult:
+        """Process a notification through the complete pipeline."""
+        
+        start_time = datetime.now()
+        result = ProcessingResult(decision=ProcessingDecision.ERROR_FALLBACK)
+        
         try:
-            config = self.config_manager.load_configuration()
+            self._stats["total_processed"] += 1
             
-            # Configure team settings
-            team_config = TeamConfig(
-                team_id=config.team_settings.team_id,
-                default_formatting=config.team_settings.default_formatting.value,
-                emoji_set={
-                    'success': '✅',
-                    'warning': '⚠️',
-                    'error': '❌',
-                    'info': 'ℹ️',
-                    'pr': '🔄',
-                    'jira': '📋',
-                    'alert': '🚨'
-                },
-                color_scheme={
-                    'primary': config.team_settings.visual_styling.brand_color,
-                    'success': '#28a745',
-                    'warning': '#ffc107',
-                    'danger': '#dc3545',
-                    'info': '#17a2b8'
-                },
-                branding={
-                    'team_name': config.team_settings.team_name,
-                    'brand_color': config.team_settings.visual_styling.brand_color,
-                    'emoji_style': config.team_settings.visual_styling.emoji_style.value,
-                    'message_density': config.team_settings.visual_styling.message_density.value
-                }
+            # Step 1: Apply filters
+            if not self._should_process_notification(context):
+                result.decision = ProcessingDecision.FILTER_OUT
+                result.reason = "filtered_by_rules"
+                self._stats["filtered_out"] += 1
+                return result
+            
+            # Step 2: Check for duplicates
+            dedup_result = await self.deduplicator.check_duplicate(
+                notification_type=context.notification_type,
+                data=context.data,
+                channel=context.channel_override or "unknown",
+                team_id=context.team_id,
+                author=context.author
             )
             
-            self.message_formatter.configure_team(team_config)
+            result.deduplication_result = dedup_result
             
-            # Configure channel overrides
-            for channel_id, channel_override in config.channel_overrides.items():
-                channel_config = ChannelConfig(
-                    channel_id=channel_id,
-                    formatting_style=channel_override.formatting_style.value,
-                    interactive_elements=channel_override.interactive_elements,
-                    threading_enabled=True,
-                    custom_branding=channel_override.custom_branding or {}
+            if dedup_result.is_duplicate:
+                result.decision = ProcessingDecision.DUPLICATE_SKIP
+                result.reason = f"duplicate: {dedup_result.reason}"
+                self._stats["duplicates_skipped"] += 1
+                return result
+            
+            # Step 3: Determine routing
+            urgency = self.router.analyze_urgency(context.data, context.notification_type)
+            
+            routing_context = RoutingContext(
+                notification_type=context.notification_type,
+                urgency=urgency,
+                team_id=context.team_id,
+                content_data=context.data,
+                author=context.author,
+                timestamp=context.timestamp,
+                metadata=context.metadata
+            )
+            
+            result.routing_context = routing_context
+            
+            target_channel = self.router.route_notification(
+                routing_context, 
+                context.channel_override
+            )
+            result.channel = target_channel
+            
+            # Step 4: Check work hours and urgency
+            if not self._is_work_hours(context.timestamp) and not self._is_urgent(urgency):
+                # Schedule for next work hours
+                scheduled_time = self._calculate_next_work_hours(context.timestamp)
+                result.decision = ProcessingDecision.SCHEDULE_FOR_WORK_HOURS
+                result.scheduled_for = scheduled_time
+                result.reason = f"scheduled_for_work_hours: {scheduled_time}"
+                
+                # Store in database for scheduling
+                await self._store_scheduled_notification(context, target_channel, scheduled_time)
+                self._stats["scheduled"] += 1
+                return result
+            
+            # Step 5: Create message
+            try:
+                message_dict = create_end_to_end_message(
+                    context.event_type,
+                    context.data,
+                    self.template_config
                 )
-                self.message_formatter.configure_channel(channel_config)
+                
+                # Convert to SlackMessage if needed
+                if isinstance(message_dict, dict):
+                    message = SlackMessage(
+                        blocks=message_dict.get("blocks", []),
+                        text=message_dict.get("text", ""),
+                        metadata=message_dict.get("metadata", {})
+                    )
+                else:
+                    message = message_dict
+                
+                result.message = message
+                
+            except Exception as e:
+                self.logger.error(f"Error creating message: {e}")
+                result.errors.append(f"message_creation_error: {e}")
+                # Continue with fallback message
+                message = self._create_fallback_message(context)
+                result.message = message
             
-            self.logger.info("Formatter configured with team settings")
+            # Step 6: Decide on immediate vs batched sending
+            if self._should_send_immediately(urgency, context.notification_type):
+                result.decision = ProcessingDecision.SEND_IMMEDIATELY
+                result.reason = "urgent_or_critical"
+                self._stats["sent_immediately"] += 1
+                
+                # Record notification to prevent duplicates
+                await self.deduplicator.record_notification(
+                    notification_type=context.notification_type,
+                    data=context.data,
+                    channel=target_channel,
+                    team_id=context.team_id,
+                    notification_hash=dedup_result.hash_value,
+                    author=context.author
+                )
+                
+            else:
+                # Add to batch
+                batchable_message = BatchableMessage(
+                    content_type=self._map_notification_to_content_type(context.notification_type),
+                    data=context.data,
+                    author=context.author or "unknown",
+                    priority=urgency.value,
+                    timestamp=context.timestamp,
+                    metadata={
+                        "notification_type": context.notification_type.value,
+                        "team_id": context.team_id,
+                        "dedup_hash": dedup_result.hash_value
+                    }
+                )
+                
+                batched_message = self.batcher.add_message(batchable_message, target_channel)
+                
+                if batched_message:
+                    # Batch was flushed, message was sent
+                    result.decision = ProcessingDecision.SEND_IMMEDIATELY
+                    result.reason = "batch_flushed"
+                    result.message = batched_message
+                    self._stats["sent_immediately"] += 1
+                else:
+                    # Message added to batch
+                    result.decision = ProcessingDecision.BATCH_AND_SEND
+                    result.reason = "added_to_batch"
+                    self._stats["batched"] += 1
+                
+                # Record notification to prevent duplicates
+                await self.deduplicator.record_notification(
+                    notification_type=context.notification_type,
+                    data=context.data,
+                    channel=target_channel,
+                    team_id=context.team_id,
+                    notification_hash=dedup_result.hash_value,
+                    author=context.author
+                )
             
         except Exception as e:
-            self.logger.warning(f"Failed to configure formatter: {e}")
-    
-    def send_notification(self, 
-                         notification_type: str,
-                         data: Dict[str, Any],
-                         channel_id: Optional[str] = None,
-                         user_id: Optional[str] = None,
-                         priority: NotificationPriority = NotificationPriority.MEDIUM,
-                         batch_eligible: bool = True,
-                         interactive: bool = True) -> NotificationResult:
-        """Send a single notification."""
-        
-        # Create notification request
-        request = NotificationRequest(
-            id=f"{notification_type}_{int(datetime.now().timestamp())}_{len(self._pending_notifications)}",
-            notification_type=notification_type,
-            data=data,
-            channel_id=channel_id,
-            user_id=user_id,
-            priority=priority,
-            batch_eligible=batch_eligible,
-            interactive=interactive
-        )
-        
-        return self._process_notification(request)
-    
-    def send_batch_notification(self,
-                               notification_type: str,
-                               batch_items: List[Dict[str, Any]],
-                               channel_id: Optional[str] = None,
-                               user_id: Optional[str] = None,
-                               priority: NotificationPriority = NotificationPriority.MEDIUM) -> NotificationResult:
-        """Send a batch notification."""
-        
-        # Create batch notification request
-        request = NotificationRequest(
-            id=f"batch_{notification_type}_{int(datetime.now().timestamp())}",
-            notification_type=notification_type,
-            data={'batch_items': batch_items, 'batch_type': 'manual'},
-            channel_id=channel_id,
-            user_id=user_id,
-            priority=priority,
-            batch_eligible=False,  # Already batched
-            interactive=True
-        )
-        
-        return self._process_batch_notification(request)
-    
-    def _process_notification(self, request: NotificationRequest) -> NotificationResult:
-        """Process a single notification with error handling."""
-        start_time = datetime.now()
-        
-        try:
-            # Check if notification should be batched
-            if request.batch_eligible and self._should_batch_notification(request):
-                return self._add_to_batch(request)
+            self.logger.error(f"Error processing notification: {e}")
+            result.decision = ProcessingDecision.ERROR_FALLBACK
+            result.reason = f"processing_error: {e}"
+            result.errors.append(str(e))
+            self._stats["errors"] += 1
             
-            # Format single message using new formatter
-            result = self._format_single_message(request.notification_type, request.data, request)
+            # Track recent errors
+            self._recent_errors.append({
+                "timestamp": datetime.now(),
+                "error": str(e),
+                "context": {
+                    "notification_type": context.notification_type.value,
+                    "team_id": context.team_id,
+                    "author": context.author
+                }
+            })
             
-            if result.status == NotificationStatus.SENT:
-                self._processing_stats['successful'] += 1
-            else:
-                self._processing_stats['failed'] += 1
-            
-            if result.fallback_used:
-                self._processing_stats['fallback_used'] += 1
-            
-            self._processing_stats['total_processed'] += 1
-            
-            # Calculate processing time
+            # Keep only recent errors (last 100)
+            if len(self._recent_errors) > 100:
+                self._recent_errors = self._recent_errors[-100:]
+        
+        finally:
+            # Record processing time
             processing_time = (datetime.now() - start_time).total_seconds() * 1000
             result.processing_time_ms = processing_time
-            
-            return result
-            
-        except Exception as e:
-            self.logger.error(f"Failed to process notification {request.id}: {e}")
-            return NotificationResult(
-                request_id=request.id,
-                status=NotificationStatus.FAILED,
-                error=str(e),
-                processing_time_ms=(datetime.now() - start_time).total_seconds() * 1000
-            )
+            self._stats["processing_time_total_ms"] += processing_time
+        
+        return result
     
-    def _process_batch_notification(self, request: NotificationRequest) -> NotificationResult:
-        """Process a batch notification."""
-        start_time = datetime.now()
+    def _should_process_notification(self, context: NotificationContext) -> bool:
+        """Check if notification should be processed based on filters."""
         
-        try:
-            # Format batch message using new formatter
-            result = self._format_batch_message(request.notification_type, request.data['batch_items'], request)
-            
-            if result.status == NotificationStatus.SENT:
-                self._processing_stats['successful'] += 1
-                self._processing_stats['batched'] += 1
-            else:
-                self._processing_stats['failed'] += 1
-            
-            if result.fallback_used:
-                self._processing_stats['fallback_used'] += 1
-            
-            self._processing_stats['total_processed'] += 1
-            
-            # Calculate processing time
-            processing_time = (datetime.now() - start_time).total_seconds() * 1000
-            result.processing_time_ms = processing_time
-            
-            return result
-            
-        except Exception as e:
-            self.logger.error(f"Failed to process batch notification {request.id}: {e}")
-            return NotificationResult(
-                request_id=request.id,
-                status=NotificationStatus.FAILED,
-                error=str(e),
-                processing_time_ms=(datetime.now() - start_time).total_seconds() * 1000
-            )
-    
-    def _format_single_message(self, notification_type: str, data: Dict[str, Any], request: NotificationRequest) -> NotificationResult:
-        """Replace existing formatting logic with new formatter."""
+        if not self.filter_config.enabled:
+            return True
         
-        def format_operation(data):
-            # Map notification type to message type
-            message_type = self._map_notification_to_message_type(notification_type)
-            
-            # Create formatter options
-            options = FormatterOptions(
-                batch=False,
-                interactive=request.interactive,
-                accessibility_mode=False,
-                threading_enabled=True,
-                experimental_features=False
-            )
-            
-            # Format message using new formatter
-            processing_result = self.message_formatter.format_message(
-                message_type=message_type,
-                data=data,
-                channel=request.channel_id,
-                team_id=None,  # Will be determined from config
-                options=options
-            )
-            
-            if not processing_result.success:
-                raise Exception(processing_result.error)
-            
-            return processing_result.message
+        # Check priority level
+        priority_levels = {"low": 1, "medium": 2, "high": 3, "critical": 4}
+        min_level = priority_levels.get(self.filter_config.min_priority_level, 1)
         
-        # Use error handler for robust processing
-        try:
-            message = self.error_handler.handle_with_recovery(
-                format_operation,
-                data,
-                template_type=notification_type
-            )
-            
-            # Send message
-            success = self._send_slack_message(message, request.channel_id)
-            
-            return NotificationResult(
-                request_id=request.id,
-                status=NotificationStatus.SENT if success else NotificationStatus.FAILED,
-                message=message,
-                sent_at=datetime.now() if success else None,
-                fallback_used=message.metadata.get('degraded', False) or message.metadata.get('error', False)
-            )
-            
-        except Exception as e:
-            return NotificationResult(
-                request_id=request.id,
-                status=NotificationStatus.FAILED,
-                error=str(e)
-            )
-    
-    def _format_batch_message(self, notification_type: str, batch_items: List[Dict[str, Any]], request: NotificationRequest) -> NotificationResult:
-        """Replace existing batch formatting with new formatter."""
+        current_priority = context.data.get("priority", "medium").lower()
+        current_level = priority_levels.get(current_priority, 2)
         
-        def format_batch_operation(batch_data):
-            # Map notification type to message type
-            message_type = self._map_notification_to_message_type(notification_type)
-            
-            # Create formatter options
-            options = FormatterOptions(
-                batch=True,
-                interactive=request.interactive,
-                accessibility_mode=False,
-                threading_enabled=True,
-                experimental_features=False
-            )
-            
-            # Format batch message using new formatter
-            processing_result = self.message_formatter.format_message(
-                message_type=message_type,
-                data=batch_data,
-                channel=request.channel_id,
-                team_id=None,  # Will be determined from config
-                options=options
-            )
-            
-            if not processing_result.success:
-                raise Exception(processing_result.error)
-            
-            return processing_result.message
-        
-        # Prepare batch data
-        batch_data = {
-            'batch_items': batch_items,
-            'batch_type': 'manual',
-            'batch_size': len(batch_items)
-        }
-        
-        # Use error handler for robust processing
-        try:
-            message = self.error_handler.handle_with_recovery(
-                format_batch_operation,
-                batch_data,
-                template_type=notification_type
-            )
-            
-            # Send message
-            success = self._send_slack_message(message, request.channel_id)
-            
-            return NotificationResult(
-                request_id=request.id,
-                status=NotificationStatus.SENT if success else NotificationStatus.FAILED,
-                message=message,
-                sent_at=datetime.now() if success else None,
-                batch_id=request.data.get('batch_id'),
-                fallback_used=message.metadata.get('degraded', False) or message.metadata.get('error', False)
-            )
-            
-        except Exception as e:
-            return NotificationResult(
-                request_id=request.id,
-                status=NotificationStatus.FAILED,
-                error=str(e)
-            )
-    
-    def _should_batch_notification(self, request: NotificationRequest) -> bool:
-        """Determine if notification should be batched."""
-        # Check configuration for batching settings
-        effective_config = self.config_manager.get_effective_config(
-            channel_id=request.channel_id,
-            user_id=request.user_id,
-            template_type=request.notification_type
-        )
-        
-        # Don't batch critical notifications
-        if request.priority == NotificationPriority.CRITICAL:
+        if current_level < min_level:
             return False
         
-        # Check channel-specific batch threshold
-        batch_threshold = effective_config.get('batch_threshold', 5)
+        # Check blocked authors
+        if context.author and context.author in self.filter_config.blocked_authors:
+            return False
         
-        # Simple batching logic - in production you'd want more sophisticated logic
-        return batch_threshold > 1
-    
-    def _add_to_batch(self, request: NotificationRequest) -> NotificationResult:
-        """Add notification to batch processing."""
-        try:
-            # Convert to batchable message
-            content_type = self._map_notification_to_content_type(request.notification_type)
-            
-            batchable_message = BatchableMessage(
-                id=request.id,
-                content_type=content_type,
-                timestamp=request.created_at,
-                author=request.data.get('author', request.data.get('user', {}).get('name')),
-                priority=request.priority.value,
-                data=request.data,
-                metadata=request.metadata
-            )
-            
-            # Add to batcher
-            batched_message = self.message_batcher.add_message(batchable_message)
-            
-            if batched_message:
-                # Batch was triggered, send it
-                success = self._send_slack_message(batched_message, request.channel_id)
-                
-                return NotificationResult(
-                    request_id=request.id,
-                    status=NotificationStatus.SENT if success else NotificationStatus.FAILED,
-                    message=batched_message,
-                    sent_at=datetime.now() if success else None,
-                    batch_id=batched_message.metadata.get('batch_id')
-                )
-            else:
-                # Added to pending batch
-                return NotificationResult(
-                    request_id=request.id,
-                    status=NotificationStatus.BATCHED
-                )
-                
-        except Exception as e:
-            self.logger.error(f"Failed to add notification to batch: {e}")
-            # Fall back to single message
-            return self._format_single_message(request.notification_type, request.data, request)
-    
-    def _map_notification_to_message_type(self, notification_type: str) -> MessageType:
-        """Map notification type to message type."""
-        mapping = {
-            'pr_opened': MessageType.PR_UPDATE,
-            'pr_merged': MessageType.PR_UPDATE,
-            'pr_closed': MessageType.PR_UPDATE,
-            'pr_ready_for_review': MessageType.PR_UPDATE,
-            'pr_approved': MessageType.PR_UPDATE,
-            'pr_batch': MessageType.PR_BATCH,
-            'jira_created': MessageType.JIRA_UPDATE,
-            'jira_updated': MessageType.JIRA_UPDATE,
-            'jira_resolved': MessageType.JIRA_UPDATE,
-            'jira_batch': MessageType.JIRA_BATCH,
-            'standup': MessageType.STANDUP,
-            'blocker': MessageType.BLOCKER,
-            'alert': MessageType.BLOCKER,  # Alerts as blockers
-            'deployment': MessageType.PR_UPDATE,  # Deployments as PR updates
-        }
+        # Check blocked repositories
+        repository = context.data.get("repository", "").lower()
+        if repository and any(blocked.lower() in repository for blocked in self.filter_config.blocked_repositories):
+            return False
         
-        return mapping.get(notification_type, MessageType.PR_UPDATE)
+        # Check blocked projects
+        project = context.data.get("project", "").lower()
+        if project and any(blocked.lower() in project for blocked in self.filter_config.blocked_projects):
+            return False
+        
+        # Check allowed notification types
+        if (self.filter_config.allowed_notification_types and 
+            context.notification_type not in self.filter_config.allowed_notification_types):
+            return False
+        
+        # Apply custom filters
+        for filter_name, filter_config in self.filter_config.custom_filters.items():
+            if not self._apply_custom_filter(context, filter_name, filter_config):
+                return False
+        
+        return True
     
-    def _map_notification_to_content_type(self, notification_type: str) -> ContentType:
+    def _apply_custom_filter(self, context: NotificationContext, 
+                           filter_name: str, filter_config: Any) -> bool:
+        """Apply custom filter logic."""
+        # This can be extended for specific custom filtering needs
+        # For now, implement basic keyword filtering
+        
+        if isinstance(filter_config, dict):
+            if "blocked_keywords" in filter_config:
+                text_content = " ".join([
+                    str(context.data.get("title", "")),
+                    str(context.data.get("summary", "")),
+                    str(context.data.get("description", ""))
+                ]).lower()
+                
+                blocked_keywords = filter_config["blocked_keywords"]
+                if any(keyword.lower() in text_content for keyword in blocked_keywords):
+                    return False
+        
+        return True
+    
+    def _is_work_hours(self, timestamp: datetime) -> bool:
+        """Check if timestamp is within work hours."""
+        
+        if not self.work_hours_config.enabled:
+            return True
+        
+        # Check if it's a work day
+        if timestamp.weekday() not in self.work_hours_config.work_days:
+            return False
+        
+        # Check if it's within work hours
+        current_hour = timestamp.hour
+        return self.work_hours_config.start_hour <= current_hour < self.work_hours_config.end_hour
+    
+    def _is_urgent(self, urgency: NotificationUrgency) -> bool:
+        """Check if notification is urgent enough to bypass work hours."""
+        
+        if not self.work_hours_config.urgent_bypass:
+            return False
+        
+        return urgency in [NotificationUrgency.HIGH, NotificationUrgency.CRITICAL]
+    
+    def _calculate_next_work_hours(self, current_time: datetime) -> datetime:
+        """Calculate next work hours start time."""
+        
+        # Start with next day
+        next_day = current_time.replace(
+            hour=self.work_hours_config.start_hour,
+            minute=0,
+            second=0,
+            microsecond=0
+        ) + timedelta(days=1)
+        
+        # Find next work day
+        while next_day.weekday() not in self.work_hours_config.work_days:
+            next_day += timedelta(days=1)
+        
+        return next_day
+    
+    def _should_send_immediately(self, urgency: NotificationUrgency, 
+                               notification_type: NotificationType) -> bool:
+        """Determine if notification should be sent immediately vs batched."""
+        
+        # Critical and high urgency always send immediately
+        if urgency in [NotificationUrgency.CRITICAL, NotificationUrgency.HIGH]:
+            return True
+        
+        # Certain notification types always send immediately
+        immediate_types = [
+            NotificationType.ALERT_SECURITY,
+            NotificationType.ALERT_OUTAGE,
+            NotificationType.JIRA_BLOCKER
+        ]
+        
+        if notification_type in immediate_types:
+            return True
+        
+        return False
+    
+    def _map_notification_to_content_type(self, notification_type: NotificationType) -> ContentType:
         """Map notification type to content type for batching."""
-        mapping = {
-            'pr_opened': ContentType.PR_UPDATE,
-            'pr_merged': ContentType.PR_UPDATE,
-            'pr_closed': ContentType.PR_UPDATE,
-            'pr_ready_for_review': ContentType.PR_UPDATE,
-            'pr_approved': ContentType.PR_UPDATE,
-            'jira_created': ContentType.JIRA_UPDATE,
-            'jira_updated': ContentType.JIRA_UPDATE,
-            'jira_resolved': ContentType.JIRA_UPDATE,
-            'standup': ContentType.STANDUP,
-            'blocker': ContentType.BLOCKER,
-            'alert': ContentType.ALERT,
-            'deployment': ContentType.DEPLOYMENT,
-        }
         
-        return mapping.get(notification_type, ContentType.PR_UPDATE)
+        if notification_type.value.startswith("pr_"):
+            return ContentType.PULL_REQUEST
+        elif notification_type.value.startswith("jira_"):
+            return ContentType.JIRA_TICKET
+        elif notification_type.value.startswith("alert_"):
+            return ContentType.ALERT
+        elif notification_type.value.startswith("standup_"):
+            return ContentType.STANDUP
+        else:
+            return ContentType.GENERAL
     
-    def _send_slack_message(self, message: SlackMessage, channel_id: Optional[str] = None) -> bool:
-        """Send message to Slack."""
+    def _create_fallback_message(self, context: NotificationContext) -> SlackMessage:
+        """Create a simple fallback message when template creation fails."""
+        
+        title = context.data.get("title", context.data.get("summary", "Notification"))
+        author = context.author or "Unknown"
+        
+        fallback_text = f"{context.notification_type.value.replace('_', ' ').title()}: {title}"
+        if author != "Unknown":
+            fallback_text += f" (by {author})"
+        
+        blocks = [
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": fallback_text
+                }
+            }
+        ]
+        
+        return SlackMessage(
+            blocks=blocks,
+            text=fallback_text,
+            metadata={
+                "template_type": "fallback",
+                "notification_type": context.notification_type.value,
+                "created_at": datetime.now().isoformat()
+            }
+        )
+    
+    async def _store_scheduled_notification(self, context: NotificationContext,
+                                          channel: str, scheduled_for: datetime) -> bool:
+        """Store notification for later scheduling."""
+        
+        if not self.supabase:
+            self.logger.warning("No database client available for scheduling")
+            return False
+        
         try:
-            # Prepare message payload
-            payload = {
-                'blocks': message.blocks,
-                'text': message.text
+            self.supabase.table("scheduled_notifications").insert({
+                "notification_type": context.notification_type.value,
+                "event_type": context.event_type,
+                "data": context.data,
+                "channel": channel,
+                "team_id": context.team_id,
+                "author": context.author,
+                "scheduled_for": scheduled_for.isoformat(),
+                "sent": False,
+                "created_at": datetime.now().isoformat(),
+                "metadata": context.metadata
+            }).execute()
+            
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Error storing scheduled notification: {e}")
+            return False
+    
+    async def flush_batches(self, channel: Optional[str] = None) -> Dict[str, List[SlackMessage]]:
+        """Manually flush batches for immediate sending."""
+        
+        if channel:
+            messages = self.batcher.flush_channel_batches(channel)
+            return {channel: messages}
+        else:
+            return self.batcher.flush_all_batches()
+    
+    async def process_scheduled_notifications(self) -> Dict[str, Any]:
+        """Process notifications that are scheduled to be sent now."""
+        
+        if not self.supabase:
+            return {"error": "No database client available"}
+        
+        try:
+            current_time = datetime.now()
+            
+            # Get notifications due to be sent
+            response = self.supabase.table("scheduled_notifications").select("*").eq(
+                "sent", False
+            ).lte(
+                "scheduled_for", current_time.isoformat()
+            ).execute()
+            
+            results = {
+                "processed": 0,
+                "sent": 0,
+                "errors": 0,
+                "notifications": []
             }
             
-            if channel_id:
-                payload['channel'] = channel_id
-            
-            if message.thread_ts:
-                payload['thread_ts'] = message.thread_ts
-            
-            # Send via Slack client
-            response = self.slack.chat_postMessage(**payload)
-            
-            if response.get('ok'):
-                self.logger.info(f"Message sent successfully to {channel_id or 'default channel'}")
-                return True
-            else:
-                self.logger.error(f"Failed to send message: {response.get('error')}")
-                return False
+            for notification_data in response.data:
+                results["processed"] += 1
                 
-        except Exception as e:
-            self.logger.error(f"Error sending Slack message: {e}")
-            return False
-    
-    def flush_pending_batches(self) -> List[NotificationResult]:
-        """Flush all pending batches."""
-        results = []
-        
-        try:
-            batched_messages = self.message_batcher.flush_all_batches()
+                try:
+                    # Recreate notification context
+                    context = NotificationContext(
+                        notification_type=NotificationType(notification_data["notification_type"]),
+                        event_type=notification_data["event_type"],
+                        data=notification_data["data"],
+                        team_id=notification_data["team_id"],
+                        author=notification_data.get("author"),
+                        channel_override=notification_data["channel"],
+                        timestamp=datetime.fromisoformat(notification_data["created_at"]),
+                        metadata=notification_data.get("metadata", {})
+                    )
+                    
+                    # Process the notification
+                    result = await self.process_notification(context)
+                    
+                    if result.decision in [ProcessingDecision.SEND_IMMEDIATELY, ProcessingDecision.BATCH_AND_SEND]:
+                        results["sent"] += 1
+                        
+                        # Mark as sent in database
+                        self.supabase.table("scheduled_notifications").update({
+                            "sent": True,
+                            "sent_at": current_time.isoformat()
+                        }).eq("id", notification_data["id"]).execute()
+                    
+                    results["notifications"].append({
+                        "id": notification_data["id"],
+                        "decision": result.decision.value,
+                        "reason": result.reason
+                    })
+                    
+                except Exception as e:
+                    results["errors"] += 1
+                    self.logger.error(f"Error processing scheduled notification {notification_data['id']}: {e}")
             
-            for batched_message in batched_messages:
-                # Determine channel from batch metadata or use default
-                channel_id = batched_message.metadata.get('channel_id')
-                
-                success = self._send_slack_message(batched_message, channel_id)
-                
-                result = NotificationResult(
-                    request_id=f"batch_{batched_message.metadata.get('batch_id', 'unknown')}",
-                    status=NotificationStatus.SENT if success else NotificationStatus.FAILED,
-                    message=batched_message,
-                    sent_at=datetime.now() if success else None,
-                    batch_id=batched_message.metadata.get('batch_id')
-                )
-                
-                results.append(result)
-                
-                if success:
-                    self._processing_stats['successful'] += 1
-                    self._processing_stats['batched'] += 1
-                else:
-                    self._processing_stats['failed'] += 1
-            
-            self.logger.info(f"Flushed {len(batched_messages)} pending batches")
+            return results
             
         except Exception as e:
-            self.logger.error(f"Error flushing pending batches: {e}")
-        
-        return results
+            self.logger.error(f"Error processing scheduled notifications: {e}")
+            return {"error": str(e)}
     
     def get_processing_stats(self) -> Dict[str, Any]:
-        """Get notification processing statistics."""
-        stats = self._processing_stats.copy()
+        """Get comprehensive processing statistics."""
         
-        # Add error handler stats
-        error_stats = self.error_handler.get_error_metrics()
-        stats['error_metrics'] = error_stats
+        total_processed = self._stats["total_processed"]
+        avg_processing_time = (
+            self._stats["processing_time_total_ms"] / total_processed 
+            if total_processed > 0 else 0
+        )
         
-        # Add batcher stats
-        batch_stats = self.message_batcher.get_batch_stats()
-        stats['batch_metrics'] = batch_stats
-        
-        # Add formatter stats
-        formatter_stats = self.message_formatter.get_metrics()
-        stats['formatter_metrics'] = formatter_stats
-        
-        return stats
-    
-    def update_configuration(self):
-        """Update configuration from config manager."""
-        try:
-            self._configure_formatter()
-            self.logger.info("Configuration updated successfully")
-        except Exception as e:
-            self.logger.error(f"Failed to update configuration: {e}")
-    
-    def health_check(self) -> Dict[str, Any]:
-        """Perform health check on all components."""
-        health = {
-            'status': 'healthy',
-            'timestamp': datetime.now().isoformat(),
-            'components': {}
+        return {
+            **self._stats,
+            "average_processing_time_ms": avg_processing_time,
+            "recent_errors_count": len(self._recent_errors),
+            "router_stats": self.router.get_routing_stats(),
+            "deduplication_stats": self.deduplicator.get_deduplication_stats(),
+            "batcher_stats": self.batcher.get_batch_stats(),
+            "spam_prevention_stats": self.batcher.get_spam_prevention_stats()
         }
+    
+    def get_health_status(self) -> Dict[str, Any]:
+        """Get system health status."""
         
-        try:
-            # Check Slack client
-            health['components']['slack'] = {
-                'status': 'healthy' if self.slack else 'unavailable'
-            }
-            
-            # Check configuration manager
-            config = self.config_manager.load_configuration()
-            health['components']['config_manager'] = {
-                'status': 'healthy',
-                'team_id': config.team_settings.team_id
-            }
-            
-            # Check error handler
-            error_metrics = self.error_handler.get_error_metrics()
-            health['components']['error_handler'] = {
-                'status': 'healthy',
-                'total_errors': error_metrics['total_errors']
-            }
-            
-            # Check message batcher
-            batch_stats = self.message_batcher.get_batch_stats()
-            health['components']['message_batcher'] = {
-                'status': 'healthy',
-                'active_batches': batch_stats['active_batches']
-            }
-            
-            # Check message formatter
-            formatter_metrics = self.message_formatter.get_metrics()
-            health['components']['message_formatter'] = {
-                'status': 'healthy',
-                'total_messages': formatter_metrics['total_messages']
-            }
-            
-        except Exception as e:
-            health['status'] = 'degraded'
-            health['error'] = str(e)
+        total_processed = self._stats["total_processed"]
+        error_rate = (self._stats["errors"] / total_processed * 100) if total_processed > 0 else 0
         
-        return health
+        # Determine health status
+        if error_rate > 10:
+            health_status = "unhealthy"
+        elif error_rate > 5:
+            health_status = "degraded"
+        else:
+            health_status = "healthy"
+        
+        return {
+            "status": health_status,
+            "error_rate_percent": error_rate,
+            "total_processed": total_processed,
+            "recent_errors": self._recent_errors[-5:],  # Last 5 errors
+            "components": {
+                "router": "healthy",  # Could add health checks to components
+                "deduplicator": "healthy",
+                "batcher": "healthy",
+                "database": "healthy" if self.supabase else "unavailable"
+            }
+        }
+    
+    def update_configuration(self, 
+                           work_hours_config: Optional[WorkHoursConfig] = None,
+                           filter_config: Optional[FilterConfig] = None,
+                           template_config: Optional[TemplateConfig] = None) -> None:
+        """Update handler configuration."""
+        
+        if work_hours_config:
+            self.work_hours_config = work_hours_config
+            self.logger.info("Updated work hours configuration")
+        
+        if filter_config:
+            self.filter_config = filter_config
+            self.logger.info("Updated filter configuration")
+        
+        if template_config:
+            self.template_config = template_config
+            self.logger.info("Updated template configuration")
 
 
-# Convenience functions for common notification types
-def send_pr_notification(handler: EnhancedNotificationHandler,
-                        pr_data: Dict[str, Any],
-                        action: str,
-                        channel_id: Optional[str] = None) -> NotificationResult:
-    """Send PR notification."""
-    notification_type = f"pr_{action}"
-    return handler.send_notification(
-        notification_type=notification_type,
-        data=pr_data,
-        channel_id=channel_id,
-        priority=NotificationPriority.MEDIUM,
-        interactive=True
-    )
-
-
-def send_jira_notification(handler: EnhancedNotificationHandler,
-                          jira_data: Dict[str, Any],
-                          action: str,
-                          channel_id: Optional[str] = None) -> NotificationResult:
-    """Send JIRA notification."""
-    notification_type = f"jira_{action}"
-    return handler.send_notification(
-        notification_type=notification_type,
-        data=jira_data,
-        channel_id=channel_id,
-        priority=NotificationPriority.MEDIUM,
-        interactive=True
-    )
-
-
-def send_alert_notification(handler: EnhancedNotificationHandler,
-                           alert_data: Dict[str, Any],
-                           channel_id: Optional[str] = None,
-                           priority: NotificationPriority = NotificationPriority.HIGH) -> NotificationResult:
-    """Send alert notification."""
-    return handler.send_notification(
-        notification_type="alert",
-        data=alert_data,
-        channel_id=channel_id,
-        priority=priority,
-        batch_eligible=priority != NotificationPriority.CRITICAL,
-        interactive=True
-    )
+# Global handler instance
+default_notification_handler = EnhancedNotificationHandler()

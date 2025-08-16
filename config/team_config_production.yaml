@@ -1,6 +1,6 @@
 channel_overrides: {}
 environment: production
-last_updated: '2025-08-15T01:48:25.092350'
+last_updated: '2025-08-15T20:44:51.352361'
 message_templates:
   standup:
     custom_fields:

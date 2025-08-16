@@ -1,0 +1,241 @@
+# Enhanced Notification System Configuration
+# This is an example configuration file showing all available options
+
+# Core system settings
+system:
+  enabled: true
+  debug_mode: false
+  analytics_enabled: true
+  health_check_enabled: true
+  health_check_interval_seconds: 300
+  metrics_retention_days: 90
+
+# Database configuration
+database:
+  supabase_url: "${SUPABASE_URL}"
+  supabase_key: "${SUPABASE_ANON_KEY}"
+
+# Slack API configuration
+slack:
+  bot_token: "${SLACK_BOT_TOKEN}"
+  app_token: "${SLACK_APP_TOKEN}"
+
+# Work hours configuration
+work_hours:
+  enabled: true
+  start_hour: 9        # 9 AM
+  end_hour: 17         # 5 PM
+  timezone: "UTC"
+  work_days: [0, 1, 2, 3, 4]  # Monday to Friday (0=Monday, 6=Sunday)
+  urgent_bypass: true  # Allow urgent notifications outside work hours
+
+# Notification filtering
+filtering:
+  enabled: true
+  min_priority_level: "low"  # low, medium, high, critical
+  blocked_authors: 
+    - "bot-user"
+    - "automated-system"
+  blocked_repositories:
+    - "test-repo"
+    - "sandbox"
+  blocked_projects:
+    - "TEST"
+    - "SANDBOX"
+  allowed_notification_types: null  # null means all types allowed
+  custom_filters:
+    spam_filter:
+      blocked_keywords: ["spam", "test", "ignore"]
+
+# Template configuration
+template:
+  team_id: "default"
+  branding:
+    primary_color: "#1f77b4"
+    secondary_color: "#ff7f0e"
+    logo_emoji: ":gear:"
+    team_name: "DevSync Team"
+  emoji_set:
+    success: ":white_check_mark:"
+    warning: ":warning:"
+    error: ":x:"
+    info: ":information_source:"
+    in_progress: ":hourglass_flowing_sand:"
+  color_scheme:
+    success: "#28a745"
+    warning: "#ffc107"
+    danger: "#dc3545"
+    info: "#17a2b8"
+    primary: "#007bff"
+  interactive_elements: true
+  accessibility_mode: false
+  threading_enabled: true
+
+# Background scheduler configuration
+scheduler:
+  check_interval_seconds: 60      # Check for scheduled notifications every minute
+  batch_size: 50                  # Process up to 50 notifications per batch
+  max_retries: 3
+  retry_delay_seconds: 300        # 5 minutes between retries
+  health_check_interval_seconds: 300  # 5 minutes
+  cleanup_interval_hours: 24      # Clean up old records daily
+  enable_metrics: true
+  enable_health_checks: true
+
+# Spam prevention configuration
+spam_prevention:
+  enabled: true
+  max_messages_per_minute: 10
+  max_messages_per_hour: 100
+  burst_threshold: 5              # Messages in burst_window_seconds
+  burst_window_seconds: 30
+  cooldown_after_burst_minutes: 5
+  duplicate_content_window_minutes: 15
+  priority_rate_limits:
+    critical: 20                  # per hour
+    high: 15
+    medium: 10
+    low: 5
+    lowest: 2
+  quiet_hours_start: 22           # 10 PM
+  quiet_hours_end: 8              # 8 AM
+  quiet_hours_enabled: true
+  strategies:
+    - "rate_limiting"
+    - "adaptive_timing"
+    - "content_deduplication"
+
+# Smart timing configuration
+timing:
+  mode: "adaptive"                # immediate, fixed_interval, adaptive, smart_burst, quiet_hours
+  base_interval_minutes: 5
+  max_interval_minutes: 30
+  min_interval_minutes: 1
+  adaptive_factor: 1.5            # Multiplier for adaptive timing
+  burst_detection_enabled: true
+  user_activity_tracking: true
+  priority_timing_overrides:
+    critical: 0                   # Immediate
+    high: 1                       # 1 minute max
+    medium: 5                     # 5 minutes max
+    low: 15                       # 15 minutes max
+    lowest: 30                    # 30 minutes max
+
+# Team-specific configurations
+teams:
+  frontend_team:
+    name: "Frontend Team"
+    enabled: true
+    channels:
+      pr_new: "#frontend-prs"
+      pr_ready: "#frontend-reviews"
+      pr_approved: "#frontend-reviews"
+      pr_merged: "#frontend-prs"
+      jira_status: "#frontend-tickets"
+      jira_blocker: "#frontend-alerts"
+      alert_build: "#frontend-alerts"
+    work_hours:
+      enabled: true
+      start_hour: 10
+      end_hour: 18
+      timezone: "America/New_York"
+      work_days: [0, 1, 2, 3, 4]
+      urgent_bypass: true
+    filters:
+      enabled: true
+      min_priority_level: "medium"
+      blocked_repositories: ["legacy-frontend"]
+      custom_filters: {}
+    template_overrides:
+      branding:
+        primary_color: "#61dafb"
+        logo_emoji: ":atom_symbol:"
+        team_name: "Frontend Team"
+      emoji_set:
+        success: ":sparkles:"
+        warning: ":construction:"
+
+  backend_team:
+    name: "Backend Team"
+    enabled: true
+    channels:
+      pr_new: "#backend-prs"
+      pr_ready: "#backend-reviews"
+      pr_approved: "#backend-reviews"
+      pr_merged: "#backend-prs"
+      jira_status: "#backend-tickets"
+      jira_blocker: "#backend-alerts"
+      alert_build: "#backend-alerts"
+      alert_deployment: "#backend-deployments"
+      alert_security: "#security-alerts"
+    work_hours:
+      enabled: true
+      start_hour: 9
+      end_hour: 17
+      timezone: "UTC"
+      work_days: [0, 1, 2, 3, 4]
+      urgent_bypass: true
+    filters:
+      enabled: true
+      min_priority_level: "low"
+      blocked_repositories: []
+      custom_filters: {}
+    template_overrides:
+      branding:
+        primary_color: "#339933"
+        logo_emoji: ":gear:"
+        team_name: "Backend Team"
+
+  devops_team:
+    name: "DevOps Team"
+    enabled: true
+    channels:
+      alert_build: "#devops-builds"
+      alert_deployment: "#devops-deployments"
+      alert_security: "#security-alerts"
+      alert_outage: "#critical-alerts"
+      jira_blocker: "#devops-blockers"
+    work_hours:
+      enabled: false  # DevOps team works around the clock
+      urgent_bypass: true
+    filters:
+      enabled: true
+      min_priority_level: "medium"
+      allowed_notification_types:
+        - "alert_build"
+        - "alert_deployment"
+        - "alert_security"
+        - "alert_outage"
+        - "jira_blocker"
+    template_overrides:
+      branding:
+        primary_color: "#ff6b35"
+        logo_emoji: ":rocket:"
+        team_name: "DevOps Team"
+
+  qa_team:
+    name: "QA Team"
+    enabled: true
+    channels:
+      pr_ready: "#qa-reviews"
+      pr_approved: "#qa-approved"
+      jira_status: "#qa-tickets"
+      alert_bug: "#qa-bugs"
+    work_hours:
+      enabled: true
+      start_hour: 8
+      end_hour: 16
+      timezone: "America/Los_Angeles"
+      work_days: [0, 1, 2, 3, 4]
+      urgent_bypass: true
+    filters:
+      enabled: true
+      min_priority_level: "low"
+      custom_filters:
+        qa_filter:
+          blocked_keywords: ["wip", "draft"]
+    template_overrides:
+      branding:
+        primary_color: "#9c27b0"
+        logo_emoji: ":mag:"
+        team_name: "QA Team"

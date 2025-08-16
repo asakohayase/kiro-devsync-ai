@@ -316,7 +316,7 @@ async def webhook_health_check():
     status = {
         "status": "healthy",
         "timestamp": datetime.utcnow().isoformat(),
-        "services": ["github", "slack", "jira"]
+        "services": ["github", "slack", "jira", "enhanced_notifications"]
     }
     
     # Test Slack connection if available
@@ -331,11 +331,175 @@ async def webhook_health_check():
         status["slack_connection"] = "error"
         status["slack_error"] = str(e)
     
+    # Test enhanced notification system
+    try:
+        from devsync_ai.core.notification_integration import default_notification_system
+        
+        # Get health status
+        notification_health = await default_notification_system.get_health_status()
+        status["enhanced_notifications"] = {
+            "status": notification_health["status"],
+            "components": notification_health["components"],
+            "initialized": default_notification_system._initialized,
+            "running": default_notification_system._running
+        }
+        
+        # Update overall status based on notification system health
+        if notification_health["status"] == "unhealthy":
+            status["status"] = "degraded"
+        
+    except Exception as e:
+        status["enhanced_notifications"] = {
+            "status": "error",
+            "error": str(e)
+        }
+        status["status"] = "degraded"
+    
     return status
 
 
+@webhook_router.get("/notifications/health")
+async def notification_system_health():
+    """Detailed health check for the enhanced notification system."""
+    try:
+        from devsync_ai.core.notification_integration import default_notification_system
+        
+        # Ensure system is initialized
+        if not default_notification_system._initialized:
+            await default_notification_system.initialize()
+        
+        # Get comprehensive health status
+        health_status = await default_notification_system.get_health_status()
+        
+        # Get system statistics
+        system_stats = await default_notification_system.get_system_stats()
+        
+        return {
+            "health": health_status,
+            "statistics": system_stats,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting notification system health: {e}")
+        return {
+            "health": {
+                "status": "error",
+                "error": str(e)
+            },
+            "timestamp": datetime.utcnow().isoformat()
+        }
+
+
+@webhook_router.get("/notifications/stats")
+async def notification_system_stats():
+    """Get detailed statistics for the enhanced notification system."""
+    try:
+        from devsync_ai.core.notification_integration import default_notification_system
+        
+        if not default_notification_system._initialized:
+            return {"error": "Notification system not initialized"}
+        
+        stats = await default_notification_system.get_system_stats()
+        return {
+            "statistics": stats,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting notification system stats: {e}")
+        return {"error": str(e)}
+
+
+@webhook_router.post("/notifications/flush")
+async def flush_notification_batches():
+    """Manually flush all pending notification batches."""
+    try:
+        from devsync_ai.core.notification_integration import default_notification_system
+        
+        if not default_notification_system._running:
+            return {"error": "Notification system not running"}
+        
+        flushed_batches = await default_notification_system.flush_all_batches()
+        
+        total_messages = sum(len(messages) for messages in flushed_batches.values())
+        
+        return {
+            "message": f"Flushed {total_messages} messages from {len(flushed_batches)} channels",
+            "channels": list(flushed_batches.keys()),
+            "total_messages": total_messages,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Error flushing notification batches: {e}")
+        return {"error": str(e)}
+
+
+@webhook_router.post("/notifications/scheduler/run")
+async def force_scheduler_run():
+    """Force an immediate scheduler run for testing."""
+    try:
+        from devsync_ai.core.notification_integration import default_notification_system
+        
+        if not default_notification_system._running:
+            return {"error": "Notification system not running"}
+        
+        result = await default_notification_system.force_scheduler_run()
+        
+        return {
+            "message": "Scheduler run completed",
+            "result": result,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Error forcing scheduler run: {e}")
+        return {"error": str(e)}
+
+
+async def send_enhanced_notification(event_type: str, payload: Dict[str, Any], team_id: str = "default") -> bool:
+    """Send notification through the enhanced notification system."""
+    try:
+        from devsync_ai.core.notification_integration import default_notification_system
+        
+        # Ensure system is running
+        if not default_notification_system._running:
+            await default_notification_system.initialize()
+            await default_notification_system.start()
+        
+        # Send notification based on event type
+        if event_type.startswith("pull_request."):
+            result = await default_notification_system.send_github_notification(
+                event_type, payload, team_id
+            )
+        elif event_type.startswith("jira:"):
+            result = await default_notification_system.send_jira_notification(
+                event_type, payload, team_id
+            )
+        else:
+            # Generic notification
+            result = await default_notification_system.send_notification(
+                notification_type=event_type,
+                event_type=event_type,
+                data=payload,
+                team_id=team_id
+            )
+        
+        if result.decision.value in ["send_immediately", "batch_and_send"]:
+            logger.info(f"✅ Enhanced notification sent for {event_type} - Decision: {result.decision.value}")
+            return True
+        else:
+            logger.info(f"📋 Enhanced notification processed for {event_type} - Decision: {result.decision.value}, Reason: {result.reason}")
+            return True  # Still successful, just handled differently
+    
+    except Exception as e:
+        logger.error(f"❌ Error sending enhanced notification: {str(e)}", exc_info=True)
+        return False
+
+
 async def send_slack_notification(pr_data: Dict[str, Any], action: str) -> bool:
-    """Send Slack notification for PR events."""
+    """Send Slack notification for PR events (legacy fallback)."""
     try:
         from devsync_ai.services.slack import SlackService
         
@@ -406,8 +570,17 @@ async def github_webhook(
 
         # Handle pull request events
         elif x_github_event == "pull_request" and "pull_request" in webhook_data:
-            # Send Slack notification in background
+            # Send enhanced notification in background
             pr_data = webhook_data["pull_request"]
+            event_name = f"pull_request.{event_type}"
+            
+            # Extract team ID from repository or use default
+            team_id = webhook_data.get("repository", {}).get("owner", {}).get("login", "default")
+            
+            # Send through enhanced notification system
+            asyncio.create_task(send_enhanced_notification(event_name, webhook_data, team_id))
+            
+            # Also send legacy Slack notification as fallback
             asyncio.create_task(send_slack_notification(pr_data, event_type))
             
             # Handle JIRA integration
@@ -415,6 +588,22 @@ async def github_webhook(
 
         # Handle pull request review events FIRST (they also contain pull_request data)
         elif x_github_event == "pull_request_review" and "review" in webhook_data:
+            # Send enhanced notification for review events
+            pr_data = webhook_data["pull_request"]
+            review_data = webhook_data["review"]
+            team_id = webhook_data.get("repository", {}).get("owner", {}).get("login", "default")
+            
+            # Map review states to notification events
+            review_state = review_data.get("state", "").lower()
+            if review_state == "approved":
+                event_name = "pull_request.approved"
+            elif review_state == "changes_requested":
+                event_name = "pull_request.changes_requested"
+            else:
+                event_name = "pull_request.reviewed"
+            
+            asyncio.create_task(send_enhanced_notification(event_name, webhook_data, team_id))
+            
             return await handle_pr_review_webhook(webhook_data, event_type)
 
         else:
@@ -553,8 +742,89 @@ async def detect_and_store_blockers(tickets: list) -> None:
         logger.error(f"Error in blocker detection: {e}", exc_info=True)
 
 
-# JIRA webhook endpoint removed - not needed in GitHub-first architecture
-# GitHub webhooks handle all JIRA integration via API calls
+@webhook_router.post("/jira")
+async def jira_webhook(request: Request) -> Dict[str, Any]:
+    """Handle JIRA webhook events for enhanced notifications."""
+    try:
+        logger.info("🚀 Received JIRA webhook")
+        
+        # Get raw payload
+        raw_payload = await request.body()
+        
+        # Parse JSON payload
+        try:
+            webhook_data = json.loads(raw_payload.decode())
+            logger.info("✅ Successfully parsed JIRA JSON payload")
+        except json.JSONDecodeError as e:
+            logger.error(f"❌ Invalid JIRA JSON payload: {e}")
+            raise HTTPException(status_code=400, detail=f"Invalid JSON payload: {str(e)}")
+        
+        # Extract event information
+        webhook_event = webhook_data.get("webhookEvent", "unknown")
+        issue_event_type = webhook_data.get("issue_event_type_name", "")
+        
+        logger.info(f"📋 JIRA Event: {webhook_event} - {issue_event_type}")
+        
+        # Map JIRA events to our notification system
+        event_mapping = {
+            "jira:issue_created": "jira:issue_created",
+            "jira:issue_updated": "jira:issue_updated",
+            "jira:issue_deleted": "jira:issue_deleted",
+            "jira:issue_assigned": "jira:issue_assigned",
+            "jira:issue_commented": "jira:issue_commented"
+        }
+        
+        # Determine event type
+        if webhook_event == "jira:issue_updated":
+            # Check what was updated
+            changelog = webhook_data.get("changelog", {})
+            items = changelog.get("items", [])
+            
+            for item in items:
+                field = item.get("field", "")
+                if field == "status":
+                    event_type = "jira:issue_updated"
+                    break
+                elif field == "priority":
+                    event_type = "jira:issue_priority_changed"
+                    break
+                elif field == "assignee":
+                    event_type = "jira:issue_assigned"
+                    break
+            else:
+                event_type = "jira:issue_updated"
+        else:
+            event_type = event_mapping.get(webhook_event, webhook_event)
+        
+        # Extract team ID from project key or use default
+        issue_data = webhook_data.get("issue", {})
+        project_key = issue_data.get("fields", {}).get("project", {}).get("key", "default")
+        team_id = f"project_{project_key.lower()}"
+        
+        # Send enhanced notification in background
+        asyncio.create_task(send_enhanced_notification(event_type, webhook_data, team_id))
+        
+        # Process JIRA ticket update in background
+        asyncio.create_task(
+            process_jira_update_background(
+                f"jira_webhook_{issue_data.get('key', 'unknown')}",
+                process_jira_ticket_update,
+                webhook_data
+            )
+        )
+        
+        return {
+            "message": f"JIRA webhook {webhook_event} processed",
+            "event_type": event_type,
+            "issue_key": issue_data.get("key", "unknown"),
+            "status": "processing_background"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ JIRA webhook processing error: {str(e)}", exc_info=True)
+        return {"message": f"Error processing JIRA webhook: {str(e)}", "status": "error"}
 
 
 @webhook_router.post("/slack")
