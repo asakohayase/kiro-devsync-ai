@@ -1,0 +1,267 @@
+# Comprehensive Test Configuration
+# Configuration for end-to-end testing of JIRA to Slack Agent Hooks
+
+# Test Environment Settings
+environment:
+  test_mode: true
+  mock_external_services: true
+  enable_logging: true
+  log_level: "INFO"
+
+# Performance Test Configuration
+performance_tests:
+  webhook_processing:
+    total_requests: 100
+    concurrent_users: 10
+    ramp_up_time_seconds: 5
+    expected_success_rate: 95.0
+    max_avg_response_time_ms: 100
+  
+  hook_execution:
+    total_requests: 50
+    concurrent_users: 5
+    ramp_up_time_seconds: 3
+    expected_success_rate: 98.0
+    max_avg_response_time_ms: 150
+  
+  notification_delivery:
+    total_requests: 75
+    concurrent_users: 8
+    ramp_up_time_seconds: 4
+    expected_success_rate: 95.0
+    max_avg_response_time_ms: 200
+  
+  end_to_end:
+    total_requests: 30
+    concurrent_users: 3
+    ramp_up_time_seconds: 2
+    expected_success_rate: 90.0
+    max_avg_response_time_ms: 300
+
+# Load Test Configuration
+load_tests:
+  light_load:
+    total_requests: 50
+    concurrent_users: 5
+    duration_seconds: 30
+  
+  medium_load:
+    total_requests: 200
+    concurrent_users: 20
+    duration_seconds: 60
+  
+  heavy_load:
+    total_requests: 500
+    concurrent_users: 50
+    duration_seconds: 120
+
+# Stress Test Configuration
+stress_tests:
+  breaking_point:
+    initial_load: 10
+    max_load: 1000
+    step_size: 20
+    success_threshold: 95.0
+  
+  memory_leak:
+    iterations: 10
+    requests_per_iteration: 50
+    max_memory_growth_mb: 50
+  
+  sustained_load:
+    duration_minutes: 5
+    requests_per_second: 10
+    max_error_rate: 5.0
+
+# Test Scenarios Configuration
+test_scenarios:
+  status_change_scenarios:
+    - name: "high_priority_status_change"
+      enabled: true
+      priority: "High"
+      from_status: "To Do"
+      to_status: "In Progress"
+      expected_hooks: ["StatusChangeHook"]
+      expected_notifications: 1
+    
+    - name: "blocked_status_change"
+      enabled: true
+      priority: "Medium"
+      from_status: "In Progress"
+      to_status: "Blocked"
+      expected_hooks: ["StatusChangeHook", "BlockerHook"]
+      expected_notifications: 2
+    
+    - name: "critical_to_done"
+      enabled: true
+      priority: "Critical"
+      from_status: "In Progress"
+      to_status: "Done"
+      expected_hooks: ["StatusChangeHook"]
+      expected_notifications: 1
+  
+  assignment_scenarios:
+    - name: "normal_assignment"
+      enabled: true
+      assignee: "John Doe"
+      workload_level: "normal"
+      expected_hooks: ["AssignmentHook"]
+      expected_notifications: 1
+    
+    - name: "overloaded_assignment"
+      enabled: true
+      assignee: "Overloaded User"
+      workload_level: "high"
+      expected_hooks: ["AssignmentHook"]
+      expected_notifications: 1
+      expected_warnings: ["workload_warning"]
+  
+  comment_scenarios:
+    - name: "high_priority_comment"
+      enabled: true
+      ticket_priority: "High"
+      comment_content: "This needs immediate attention!"
+      expected_hooks: ["CommentHook"]
+      expected_notifications: 1
+    
+    - name: "blocker_comment"
+      enabled: true
+      ticket_priority: "Medium"
+      comment_content: "This is blocking our release!"
+      expected_hooks: ["CommentHook", "BlockerHook"]
+      expected_notifications: 2
+
+# Team Configuration for Testing
+team_configurations:
+  engineering:
+    team_id: "engineering"
+    hooks:
+      status_change:
+        enabled: true
+        channels: ["#eng-updates"]
+        conditions:
+          - field: "priority"
+            operator: "in"
+            values: ["High", "Critical"]
+        urgency_mapping:
+          "To Do -> In Progress": "medium"
+          "In Progress -> Blocked": "high"
+          "In Progress -> Done": "low"
+      
+      assignment:
+        enabled: true
+        channels: ["#eng-assignments"]
+        workload_warnings: true
+        max_tickets_per_assignee: 5
+      
+      comment:
+        enabled: true
+        channels: ["#eng-discussions"]
+        conditions:
+          - field: "ticket_priority"
+            operator: "in"
+            values: ["High", "Critical"]
+      
+      blocker:
+        enabled: true
+        channels: ["#eng-blockers"]
+        escalation_delay_minutes: 30
+  
+  qa:
+    team_id: "qa"
+    hooks:
+      status_change:
+        enabled: true
+        channels: ["#qa-updates"]
+        conditions:
+          - field: "status"
+            operator: "in"
+            values: ["Ready for Testing", "In Testing", "Done"]
+      
+      comment:
+        enabled: true
+        channels: ["#qa-discussions"]
+        conditions:
+          - field: "status"
+            operator: "in"
+            values: ["Ready for Testing", "In Testing"]
+  
+  product:
+    team_id: "product"
+    hooks:
+      status_change:
+        enabled: true
+        channels: ["#product-updates"]
+        conditions:
+          - field: "priority"
+            operator: "in"
+            values: ["Critical"]
+          - field: "status"
+            operator: "in"
+            values: ["Done"]
+
+# Mock Service Configuration
+mock_services:
+  jira_service:
+    response_delay_ms: 50
+    error_rate: 0.02  # 2% error rate
+    timeout_ms: 5000
+  
+  slack_service:
+    response_delay_ms: 100
+    error_rate: 0.01  # 1% error rate
+    timeout_ms: 10000
+    rate_limit_per_minute: 100
+  
+  database:
+    response_delay_ms: 10
+    error_rate: 0.005  # 0.5% error rate
+    connection_pool_size: 10
+
+# Integration Test Configuration
+integration_tests:
+  enhanced_notification_handler:
+    enabled: true
+    test_batching: true
+    test_scheduling: true
+    test_deduplication: true
+  
+  slack_message_formatter:
+    enabled: true
+    test_block_kit: true
+    test_fallback_templates: true
+    test_emoji_formatting: true
+  
+  database_integration:
+    enabled: true
+    test_hook_logging: true
+    test_analytics_storage: true
+    test_configuration_storage: true
+  
+  analytics_engine:
+    enabled: true
+    test_metrics_collection: true
+    test_performance_tracking: true
+    test_reporting: true
+
+# Success Criteria
+success_criteria:
+  overall_success_rate: 80.0
+  scenario_success_rate: 85.0
+  performance_success_rate: 90.0
+  integration_success_rate: 80.0
+  stress_test_success_rate: 70.0
+
+# Reporting Configuration
+reporting:
+  generate_html_report: true
+  generate_json_report: true
+  save_performance_metrics: true
+  include_detailed_logs: false
+  report_directory: "tests/results"
+
+# Cleanup Configuration
+cleanup:
+  clear_test_data: true
+  reset_mock_services: true
+  cleanup_temp_files: true

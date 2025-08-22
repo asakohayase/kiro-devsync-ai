@@ -1,257 +1,435 @@
 #!/usr/bin/env python3
 """
-Send development activity notification to Slack.
+Development Activity Notification Script
+Analyzes recent git changes and sends a formatted Slack notification to the team.
 """
 
 import asyncio
 import json
-import os
+import subprocess
+import sys
 from datetime import datetime
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
+import os
+import aiohttp
+import logging
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
-def create_dev_activity_message(developer: str, changes: Dict[str, Any]) -> Dict[str, Any]:
-    """Create a development activity notification message."""
+class SimpleSlackClient:
+    """Simple Slack client for sending messages."""
     
-    # Count changes by type
-    modified_files = changes.get('modified', [])
-    new_files = changes.get('new', [])
-    deleted_files = changes.get('deleted', [])
+    def __init__(self, token: str):
+        self.token = token
+        self.base_url = "https://slack.com/api"
     
-    total_changes = len(modified_files) + len(new_files) + len(deleted_files)
-    
-    # Determine activity level
-    if total_changes > 50:
-        activity_emoji = "🔥"
-        activity_level = "High Activity"
-    elif total_changes > 20:
-        activity_emoji = "⚡"
-        activity_level = "Active Development"
-    else:
-        activity_emoji = "📝"
-        activity_level = "Development Update"
-    
-    # Build blocks
-    blocks = []
-    
-    # Header
-    blocks.append({
-        "type": "header",
-        "text": {
-            "type": "plain_text",
-            "text": f"{activity_emoji} {activity_level} - {developer}",
-            "emoji": True
+    async def send_message(self, channel: str, blocks: List[Dict], text: str) -> Dict[str, Any]:
+        """Send a message to Slack."""
+        headers = {
+            "Authorization": f"Bearer {self.token}",
+            "Content-Type": "application/json"
         }
-    })
-    
-    # Summary section
-    summary_text = f"*📊 Change Summary:*\n"
-    summary_text += f"• {len(new_files)} new files\n"
-    summary_text += f"• {len(modified_files)} modified files\n"
-    summary_text += f"• {len(deleted_files)} deleted files\n"
-    summary_text += f"• {total_changes} total changes"
-    
-    blocks.append({
-        "type": "section",
-        "text": {
-            "type": "mrkdwn",
-            "text": summary_text
+        
+        payload = {
+            "channel": channel,
+            "blocks": blocks,
+            "text": text
         }
-    })
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f"{self.base_url}/chat.postMessage",
+                headers=headers,
+                json=payload
+            ) as response:
+                return await response.json()
+
+
+class DevActivityAnalyzer:
+    """Analyzes development activity and generates notifications."""
     
-    # Key changes section
-    key_changes = []
+    def __init__(self):
+        self.slack_token = os.getenv('SLACK_BOT_TOKEN')
+        self.slack_client = SimpleSlackClient(self.slack_token) if self.slack_token else None
     
-    # Analyze file types and patterns
-    if any('hook' in f.lower() for f in new_files + modified_files):
-        key_changes.append("🎣 Agent hooks system development")
+    def get_git_info(self) -> Dict[str, Any]:
+        """Get recent git commit information."""
+        try:
+            # Get the latest commit info
+            result = subprocess.run([
+                'git', 'show', '--name-only', '--pretty=format:%an|%ae|%ad|%s', 
+                '--date=iso', 'HEAD'
+            ], capture_output=True, text=True, check=True)
+            
+            lines = result.stdout.strip().split('\n')
+            if not lines:
+                return {}
+            
+            # Parse commit info
+            commit_info = lines[0].split('|')
+            if len(commit_info) < 4:
+                return {}
+            
+            author_name = commit_info[0]
+            author_email = commit_info[1]
+            commit_date = commit_info[2]
+            commit_message = commit_info[3]
+            
+            # Get changed files (skip the first line which is commit info)
+            changed_files = [line.strip() for line in lines[1:] if line.strip()]
+            
+            return {
+                'author_name': author_name,
+                'author_email': author_email,
+                'commit_date': commit_date,
+                'commit_message': commit_message,
+                'changed_files': changed_files
+            }
+            
+        except subprocess.CalledProcessError as e:
+            print(f"Error getting git info: {e}")
+            return {}
     
-    if any('analytics' in f.lower() for f in new_files + modified_files):
-        key_changes.append("📈 Analytics system implementation")
+    def get_git_status(self) -> Dict[str, List[str]]:
+        """Get current git status (modified, added, deleted files)."""
+        try:
+            result = subprocess.run([
+                'git', 'status', '--porcelain'
+            ], capture_output=True, text=True, check=True)
+            
+            modified_files = []
+            added_files = []
+            deleted_files = []
+            
+            for line in result.stdout.strip().split('\n'):
+                if not line.strip():
+                    continue
+                
+                status = line[:2]
+                filename = line[3:].strip()
+                
+                if status.startswith('M'):
+                    modified_files.append(filename)
+                elif status.startswith('A') or status.startswith('??'):
+                    added_files.append(filename)
+                elif status.startswith('D'):
+                    deleted_files.append(filename)
+            
+            return {
+                'modified': modified_files,
+                'added': added_files,
+                'deleted': deleted_files
+            }
+            
+        except subprocess.CalledProcessError as e:
+            print(f"Error getting git status: {e}")
+            return {'modified': [], 'added': [], 'deleted': []}
     
-    if any('template' in f.lower() for f in new_files + modified_files):
-        key_changes.append("📋 Message template enhancements")
+    def categorize_changes(self, files: List[str]) -> Dict[str, List[str]]:
+        """Categorize changed files by type."""
+        categories = {
+            'core': [],
+            'templates': [],
+            'tests': [],
+            'docs': [],
+            'config': [],
+            'scripts': [],
+            'examples': [],
+            'hooks': [],
+            'analytics': [],
+            'api': [],
+            'other': []
+        }
+        
+        for file in files:
+            file_lower = file.lower()
+            
+            if 'devsync_ai/core/' in file:
+                categories['core'].append(file)
+            elif 'devsync_ai/templates/' in file:
+                categories['templates'].append(file)
+            elif 'devsync_ai/analytics/' in file:
+                categories['analytics'].append(file)
+            elif 'devsync_ai/api/' in file:
+                categories['api'].append(file)
+            elif 'tests/' in file:
+                categories['tests'].append(file)
+            elif 'docs/' in file:
+                categories['docs'].append(file)
+            elif 'config/' in file:
+                categories['config'].append(file)
+            elif 'scripts/' in file:
+                categories['scripts'].append(file)
+            elif 'examples/' in file:
+                categories['examples'].append(file)
+            elif '.kiro/hooks/' in file or 'hooks/' in file:
+                categories['hooks'].append(file)
+            else:
+                categories['other'].append(file)
+        
+        # Remove empty categories
+        return {k: v for k, v in categories.items() if v}
     
-    if any('notification' in f.lower() for f in new_files + modified_files):
-        key_changes.append("🔔 Notification system updates")
-    
-    if any('test' in f.lower() for f in new_files + modified_files):
-        key_changes.append("🧪 Test coverage improvements")
-    
-    if any('doc' in f.lower() for f in new_files + modified_files):
-        key_changes.append("📚 Documentation updates")
-    
-    if key_changes:
+    def create_slack_message(self, git_info: Dict[str, Any], status_info: Dict[str, List[str]]) -> Dict[str, Any]:
+        """Create a formatted Slack message for the development activity."""
+        
+        # Combine all changed files
+        all_files = []
+        all_files.extend(status_info.get('modified', []))
+        all_files.extend(status_info.get('added', []))
+        all_files.extend(status_info.get('deleted', []))
+        
+        # If we have git info, use those files instead
+        if git_info.get('changed_files'):
+            all_files = git_info['changed_files']
+        
+        # Categorize changes
+        categorized = self.categorize_changes(all_files)
+        
+        # Determine activity type and emoji
+        activity_emoji = "🔧"
+        activity_type = "Development Activity"
+        
+        if categorized.get('core'):
+            activity_emoji = "⚙️"
+            activity_type = "Core System Update"
+        elif categorized.get('templates'):
+            activity_emoji = "📝"
+            activity_type = "Template Enhancement"
+        elif categorized.get('analytics'):
+            activity_emoji = "📊"
+            activity_type = "Analytics Update"
+        elif categorized.get('hooks'):
+            activity_emoji = "🪝"
+            activity_type = "Agent Hooks Update"
+        elif categorized.get('tests'):
+            activity_emoji = "🧪"
+            activity_type = "Testing Update"
+        
+        # Build the message blocks
+        blocks = []
+        
+        # Header
+        author_name = git_info.get('author_name', 'Developer')
+        commit_message = git_info.get('commit_message', 'Recent development activity')
+        
+        blocks.append({
+            "type": "header",
+            "text": {
+                "type": "plain_text",
+                "text": f"{activity_emoji} {activity_type}",
+                "emoji": True
+            }
+        })
+        
+        # Main info section
+        main_text = f"*👤 Developer:* {author_name}\n"
+        main_text += f"*📝 Changes:* {commit_message}\n"
+        
+        if git_info.get('commit_date'):
+            try:
+                commit_dt = datetime.fromisoformat(git_info['commit_date'].replace(' ', 'T'))
+                formatted_date = commit_dt.strftime('%m/%d/%Y at %I:%M %p')
+                main_text += f"*⏰ Timestamp:* {formatted_date}"
+            except:
+                main_text += f"*⏰ Timestamp:* {git_info['commit_date']}"
+        else:
+            main_text += f"*⏰ Timestamp:* {datetime.now().strftime('%m/%d/%Y at %I:%M %p')}"
+        
         blocks.append({
             "type": "section",
             "text": {
                 "type": "mrkdwn",
-                "text": "*🎯 Key Areas:*\n" + "\n".join([f"• {change}" for change in key_changes])
+                "text": main_text
             }
         })
-    
-    # Recent files (show top 10)
-    if new_files or modified_files:
+        
+        # File changes summary
+        total_files = len(all_files)
+        if total_files > 0:
+            blocks.append({
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": f"*📁 Files Changed:* {total_files} files"
+                }
+            })
+            
+            # Categorized changes
+            if categorized:
+                category_text = "*🗂️ Change Categories:*\n"
+                category_emojis = {
+                    'core': '⚙️',
+                    'templates': '📝',
+                    'analytics': '📊',
+                    'hooks': '🪝',
+                    'tests': '🧪',
+                    'docs': '📚',
+                    'config': '⚙️',
+                    'scripts': '🔧',
+                    'examples': '💡',
+                    'api': '🌐',
+                    'other': '📄'
+                }
+                
+                for category, files in categorized.items():
+                    emoji = category_emojis.get(category, '📄')
+                    category_text += f"• {emoji} {category.title()}: {len(files)} files\n"
+                
+                blocks.append({
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": category_text.strip()
+                    }
+                })
+            
+            # Show some key files (limit to avoid message being too long)
+            key_files = []
+            for category in ['core', 'templates', 'analytics', 'hooks', 'api']:
+                if category in categorized:
+                    key_files.extend(categorized[category][:2])  # Max 2 files per category
+            
+            if key_files:
+                files_text = "*🔍 Key Files:*\n"
+                for file in key_files[:8]:  # Limit to 8 files total
+                    # Shorten long file paths
+                    display_file = file
+                    if len(file) > 50:
+                        parts = file.split('/')
+                        if len(parts) > 2:
+                            display_file = f"{parts[0]}/.../{parts[-1]}"
+                    files_text += f"• `{display_file}`\n"
+                
+                if len(all_files) > 8:
+                    files_text += f"• ... and {len(all_files) - 8} more files\n"
+                
+                blocks.append({
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": files_text.strip()
+                    }
+                })
+        
+        # Add divider
         blocks.append({"type": "divider"})
         
-        recent_files = []
-        
-        # Show new files first
-        for file in new_files[:5]:
-            recent_files.append(f"🆕 `{file}`")
-        
-        # Then modified files
-        for file in modified_files[:5]:
-            recent_files.append(f"📝 `{file}`")
-        
-        if len(new_files + modified_files) > 10:
-            recent_files.append(f"... and {len(new_files + modified_files) - 10} more files")
+        # Action buttons
+        buttons = [
+            {
+                "type": "button",
+                "text": {
+                    "type": "plain_text",
+                    "text": "📊 View Dashboard",
+                    "emoji": True
+                },
+                "action_id": "view_dashboard",
+                "value": "dashboard"
+            },
+            {
+                "type": "button",
+                "text": {
+                    "type": "plain_text",
+                    "text": "🔍 View Changes",
+                    "emoji": True
+                },
+                "action_id": "view_changes",
+                "value": "git_diff"
+            }
+        ]
         
         blocks.append({
-            "type": "section",
-            "text": {
-                "type": "mrkdwn",
-                "text": "*📁 Recent Changes:*\n" + "\n".join(recent_files)
-            }
+            "type": "actions",
+            "elements": buttons
         })
+        
+        # Footer
+        blocks.append({
+            "type": "context",
+            "elements": [
+                {
+                    "type": "mrkdwn",
+                    "text": f"DevSync AI • {datetime.now().strftime('%I:%M %p')}"
+                }
+            ]
+        })
+        
+        # Fallback text for notifications
+        fallback_text = f"{activity_type} by {author_name}: {commit_message}"
+        
+        return {
+            "blocks": blocks,
+            "text": fallback_text
+        }
     
-    # Timestamp
-    timestamp = datetime.now().strftime('%I:%M %p on %B %d, %Y')
-    blocks.append({
-        "type": "context",
-        "elements": [
-            {
-                "type": "mrkdwn",
-                "text": f"⏰ {timestamp} | 🤖 DevSync AI Activity Monitor"
-            }
-        ]
-    })
-    
-    # Fallback text
-    fallback_text = f"{developer} made {total_changes} changes to the codebase"
-    
-    return {
-        "blocks": blocks,
-        "text": fallback_text
-    }
+    async def send_notification(self) -> bool:
+        """Send the development activity notification."""
+        try:
+            print("🔍 Analyzing development activity...")
+            
+            # Get git information
+            git_info = self.get_git_info()
+            status_info = self.get_git_status()
+            
+            if not git_info and not any(status_info.values()):
+                print("ℹ️ No recent development activity found")
+                return False
+            
+            print(f"📊 Found activity: {git_info.get('commit_message', 'Working directory changes')}")
+            
+            # Create Slack message
+            message = self.create_slack_message(git_info, status_info)
+            
+            # Send to Slack
+            if not self.slack_client:
+                print("⚠️ Slack client not configured - cannot send notification")
+                print("📝 Message that would have been sent:")
+                print(json.dumps(message, indent=2))
+                return False
+            
+            # Get channel from environment or use default
+            channel = os.getenv('SLACK_CHANNEL', 'general')
+            
+            print(f"📤 Sending notification to #{channel}...")
+            
+            result = await self.slack_client.send_message(
+                channel=channel,
+                blocks=message['blocks'],
+                text=message['text']
+            )
+            
+            if result.get('ok'):
+                print("✅ Development activity notification sent successfully!")
+                return True
+            else:
+                print(f"❌ Failed to send notification: {result.get('error', 'Unknown error')}")
+                return False
+                
+        except Exception as e:
+            print(f"❌ Error sending development activity notification: {e}")
+            return False
 
 
-async def send_activity_notification():
-    """Send the development activity notification."""
+async def main():
+    """Main function to run the development activity notification."""
+    print("🚀 DevSync AI - Development Activity Notification")
+    print("=" * 50)
     
-    # Analyze the git changes
-    changes = {
-        'modified': [
-            '.kiro/specs/jira-slack-agent-hooks/tasks.md',
-            'devsync_ai/api/routes.py',
-            'devsync_ai/core/exceptions.py',
-            'devsync_ai/database/migrations/run_migrations.sql',
-            'devsync_ai/webhooks/jira_webhook_handler.py',
-            'pyproject.toml',
-            'uv.lock'
-        ],
-        'new': [
-            '.kiro/hooks/dev-activity-monitor.kiro.hook',
-            'config/analytics_config.example.yaml',
-            'config/team_custom_hooks.yaml',
-            'config/team_engineering_hooks.yaml',
-            'config/team_qa_hooks.yaml',
-            'devsync_ai/analytics/analytics_data_manager.py',
-            'devsync_ai/analytics/business_metrics_engine.py',
-            'devsync_ai/analytics/dashboard_api.py',
-            'devsync_ai/analytics/hook_analytics_engine.py',
-            'devsync_ai/analytics/hook_monitoring_dashboard.py',
-            'devsync_ai/analytics/hook_optimization_engine.py',
-            'devsync_ai/analytics/intelligence_engine.py',
-            'devsync_ai/analytics/monitoring_data_manager.py',
-            'devsync_ai/analytics/productivity_analytics_engine.py',
-            'devsync_ai/analytics/real_time_monitoring.py',
-            'devsync_ai/analytics/workload_analytics_engine.py',
-            'devsync_ai/api/hook_configuration_routes.py',
-            'devsync_ai/api/hook_management_routes.py',
-            'devsync_ai/core/event_classification_engine.py',
-            'devsync_ai/core/hook_configuration_manager.py',
-            'devsync_ai/core/hook_configuration_validator.py',
-            'devsync_ai/core/hook_error_handler.py',
-            'devsync_ai/core/hook_event_processor.py',
-            'devsync_ai/core/hook_notification_integration.py',
-            'devsync_ai/core/hook_rule_engine.py',
-            'devsync_ai/core/hook_template_fallback.py',
-            'devsync_ai/core/hook_template_integration.py',
-            'devsync_ai/database/hook_data_manager.py',
-            'devsync_ai/formatters/hook_message_formatter.py',
-            'devsync_ai/hooks/hook_registry_manager.py',
-            'devsync_ai/hooks/jira_agent_hooks.py',
-            'devsync_ai/templates/hook_templates.py',
-            'docs/analytics-system.md',
-            'docs/hook-configuration-manager-implementation.md',
-            'docs/hook-data-storage.md',
-            'docs/hook-event-processor-implementation.md',
-            'docs/hook-management-api.md',
-            'docs/hook-notification-integration-implementation.md',
-            'docs/workload-analysis-implementation.md',
-            'examples/hook_error_handler_usage.py',
-            'examples/hook_event_processor_usage.py',
-            'examples/hook_rule_engine_usage.py',
-            'examples/hook_template_integration_examples.py',
-            'examples/jira_agent_hooks_integration.py',
-            'migrations/create_hook_monitoring_tables.sql',
-            'migrations/create_team_hook_configurations.sql',
-            'scripts/migrate_hook_data_storage.py',
-            'scripts/start_analytics_dashboard.py',
-            'scripts/test_hook_data_storage.py',
-            'scripts/validate_hook_data_storage.py',
-            'scripts/validate_hook_error_handler.py',
-            'tests/framework/hook_test_suite.py',
-            'tests/framework/integration_test_framework.py',
-            'tests/test_agent_hook_integration_flow.py',
-            'tests/test_analytics_system.py',
-            'tests/test_assignment_hook_workload_analysis.py',
-            'tests/test_event_classification_engine.py',
-            'tests/test_hook_analytics_engine.py',
-            'tests/test_hook_analytics_engine_simple.py',
-            'tests/test_hook_analytics_integration.py',
-            'tests/test_hook_configuration_manager.py',
-            'tests/test_hook_data_storage.py',
-            'tests/test_hook_error_handler.py',
-            'tests/test_hook_error_handler_advanced.py',
-            'tests/test_hook_event_processor.py',
-            'tests/test_hook_management_api.py',
-            'tests/test_hook_management_api_simple.py',
-            'tests/test_hook_notification_integration.py',
-            'tests/test_hook_notification_integration_simple.py',
-            'tests/test_hook_rule_engine.py',
-            'tests/test_hook_template_integration.py',
-            'tests/test_jira_agent_hooks.py',
-            'tests/test_workload_analytics_engine.py',
-            'tests/test_workload_analytics_simple.py',
-            'tests/test_workload_integration_simple.py'
-        ],
-        'deleted': [
-            '.kiro/specs/Day2_Progress.md'
-        ]
-    }
+    analyzer = DevActivityAnalyzer()
+    success = await analyzer.send_notification()
     
-    # Create the message
-    message = create_dev_activity_message("shubhammohole", changes)
+    if success:
+        print("\n✨ Notification sent successfully!")
+    else:
+        print("\n⚠️ Notification could not be sent")
     
-    # Check if Slack token is available
-    slack_token = os.getenv("SLACK_BOT_TOKEN")
-    
-    if not slack_token:
-        print("❌ Slack bot token not configured - cannot send notification")
-        print("📋 Message that would have been sent:")
-        print(json.dumps(message, indent=2))
-        return
-    
-    # For now, just display the message since we don't have Slack configured
-    print("🚀 Development Activity Notification Generated!")
-    print("=" * 60)
-    print("📋 Slack Message Content:")
-    print(json.dumps(message, indent=2))
-    print("=" * 60)
-    print("✅ Notification ready to send to team Slack channel")
+    return 0 if success else 1
 
 
 if __name__ == "__main__":
-    asyncio.run(send_activity_notification())
+    exit_code = asyncio.run(main())
+    sys.exit(exit_code)

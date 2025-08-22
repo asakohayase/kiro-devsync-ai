@@ -4,7 +4,7 @@
   "description": "Monitors file changes in Python files, new file creation, config modifications, and commit messages, then sends formatted notifications to Slack with developer info, changed files, and activity summaries",
   "version": "1",
   "when": {
-    "type": "fileEdited",
+    "type": "userTriggered",
     "patterns": [
       "devsync_ai/**/*.py",
       "**/*.py",

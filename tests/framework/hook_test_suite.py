@@ -22,8 +22,8 @@ from devsync_ai.core.agent_hooks import (
     EventCategory, UrgencyLevel, SignificanceLevel
 )
 from devsync_ai.hooks.jira_agent_hooks import (
-    StatusChangeHook, AssignmentHook, CommentHook, 
-    PriorityChangeHook, BlockerHook
+    StatusChangeHook, AssignmentChangeHook, CommentHook, 
+    CriticalUpdateHook, BlockerHook
 )
 
 

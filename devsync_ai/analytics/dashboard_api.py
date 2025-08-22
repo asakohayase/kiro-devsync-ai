@@ -22,6 +22,7 @@ from devsync_ai.analytics.hook_monitoring_dashboard import get_dashboard, HookMo
 from devsync_ai.analytics.productivity_analytics_engine import ProductivityAnalyticsEngine
 from devsync_ai.analytics.intelligence_engine import IntelligenceEngine
 from devsync_ai.analytics.hook_optimization_engine import HookOptimizationEngine
+from devsync_ai.analytics.monitoring_dashboard import get_monitoring_dashboard
 from devsync_ai.hooks.hook_registry_manager import get_hook_registry_manager
 
 logger = logging.getLogger(__name__)
@@ -448,10 +449,10 @@ async def update_alert_thresholds(thresholds: Dict[str, float]):
     return {"message": "Thresholds updated successfully", "thresholds": dashboard.thresholds}
 
 
-# Health Check Endpoint
+# Health Check and Monitoring Endpoints
 @analytics_app.get("/api/health")
 async def health_check():
-    """Health check endpoint."""
+    """Basic health check endpoint."""
     try:
         dashboard = await get_dashboard()
         registry_manager = await get_hook_registry_manager()
@@ -472,6 +473,387 @@ async def health_check():
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "error": str(e)
         }
+
+
+@analytics_app.get("/api/health/detailed")
+async def detailed_health_check():
+    """Detailed health check with component diagnostics."""
+    from devsync_ai.analytics.system_health_monitor import get_health_monitor
+    
+    try:
+        health_monitor = await get_health_monitor()
+        health_status = await health_monitor.get_system_health_status()
+        
+        return {
+            "status": health_status["overall_status"],
+            "timestamp": health_status["timestamp"],
+            "last_check": health_status["last_health_check"],
+            "components": health_status["components"],
+            "system_resources": health_status["system_resources"],
+            "active_alerts": health_status["active_alerts"],
+            "monitoring_active": health_status["monitoring_active"]
+        }
+    except Exception as e:
+        logger.error(f"Detailed health check failed: {e}")
+        return {
+            "status": "error",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "error": str(e)
+        }
+
+
+@analytics_app.get("/api/health/diagnostics")
+async def system_diagnostics(
+    level: str = Query("detailed", regex="^(basic|detailed|comprehensive)$")
+):
+    """Comprehensive system diagnostics."""
+    from devsync_ai.analytics.system_health_monitor import get_health_monitor, DiagnosticLevel
+    
+    try:
+        health_monitor = await get_health_monitor()
+        diagnostic_level = DiagnosticLevel(level)
+        diagnostics = await health_monitor.get_detailed_diagnostics(diagnostic_level)
+        
+        return {
+            "timestamp": diagnostics.timestamp.isoformat(),
+            "overall_status": diagnostics.overall_status.value,
+            "diagnostic_level": diagnostics.diagnostic_level.value,
+            "components": {
+                name: {
+                    "status": health.status.value,
+                    "response_time_ms": health.response_time_ms,
+                    "last_check": health.last_check.isoformat(),
+                    "error_message": health.error_message,
+                    "metadata": health.metadata
+                }
+                for name, health in diagnostics.components.items()
+            },
+            "performance_metrics": diagnostics.performance_metrics,
+            "resource_usage": diagnostics.resource_usage,
+            "active_issues": diagnostics.active_issues,
+            "recommendations": diagnostics.recommendations
+        }
+    except Exception as e:
+        logger.error(f"System diagnostics failed: {e}")
+        return {
+            "status": "error",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "error": str(e)
+        }
+
+
+@analytics_app.get("/api/monitoring/performance")
+async def get_performance_monitoring(
+    hours: int = Query(1, ge=1, le=24)
+):
+    """Get performance monitoring data."""
+    from devsync_ai.analytics.system_health_monitor import get_health_monitor
+    
+    try:
+        health_monitor = await get_health_monitor()
+        performance_history = await health_monitor.get_performance_history(hours)
+        
+        return {
+            "time_range_hours": hours,
+            "data_points": len(performance_history),
+            "performance_history": performance_history
+        }
+    except Exception as e:
+        logger.error(f"Performance monitoring failed: {e}")
+        return {
+            "error": str(e),
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+
+
+@analytics_app.get("/api/monitoring/alerts")
+async def get_monitoring_alerts():
+    """Get active monitoring alerts."""
+    from devsync_ai.analytics.system_health_monitor import get_health_monitor
+    
+    try:
+        health_monitor = await get_health_monitor()
+        alerts = await health_monitor.get_active_alerts()
+        
+        return {
+            "total_alerts": len(alerts),
+            "alerts": alerts,
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Failed to get monitoring alerts: {e}")
+        return {
+            "error": str(e),
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+
+
+@analytics_app.post("/api/monitoring/alerts/{alert_id}/resolve")
+async def resolve_monitoring_alert(alert_id: str):
+    """Resolve a monitoring alert."""
+    from devsync_ai.analytics.system_health_monitor import get_health_monitor
+    
+    try:
+        health_monitor = await get_health_monitor()
+        success = await health_monitor.resolve_alert(alert_id)
+        
+        if success:
+            return {
+                "message": f"Alert {alert_id} resolved successfully",
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+        else:
+            raise HTTPException(status_code=404, detail="Alert not found")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to resolve alert: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@analytics_app.get("/api/monitoring/thresholds")
+async def get_monitoring_thresholds():
+    """Get current monitoring thresholds."""
+    from devsync_ai.analytics.system_health_monitor import get_health_monitor
+    
+    try:
+        health_monitor = await get_health_monitor()
+        return {
+            "thresholds": health_monitor.thresholds,
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Failed to get thresholds: {e}")
+        return {
+            "error": str(e),
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+
+
+@analytics_app.put("/api/monitoring/thresholds")
+async def update_monitoring_thresholds(thresholds: Dict[str, float]):
+    """Update monitoring thresholds."""
+    from devsync_ai.analytics.system_health_monitor import get_health_monitor
+    
+    try:
+        health_monitor = await get_health_monitor()
+        success = await health_monitor.update_thresholds(thresholds)
+        
+        if success:
+            return {
+                "message": "Thresholds updated successfully",
+                "updated_thresholds": thresholds,
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+        else:
+            raise HTTPException(status_code=400, detail="Invalid threshold configuration")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to update thresholds: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# Monitoring Dashboard Endpoints
+@analytics_app.get("/api/dashboard/layouts")
+async def get_dashboard_layouts():
+    """Get available dashboard layouts."""
+    try:
+        monitoring_dashboard = await get_monitoring_dashboard()
+        layouts = await monitoring_dashboard.get_available_layouts()
+        
+        return {
+            "layouts": layouts,
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Failed to get dashboard layouts: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@analytics_app.get("/api/dashboard/layouts/{layout_id}")
+async def get_dashboard_layout(layout_id: str):
+    """Get a specific dashboard layout."""
+    try:
+        monitoring_dashboard = await get_monitoring_dashboard()
+        layout = await monitoring_dashboard.get_dashboard_layout(layout_id)
+        
+        if not layout:
+            raise HTTPException(status_code=404, detail="Layout not found")
+        
+        return {
+            "layout_id": layout.layout_id,
+            "name": layout.name,
+            "description": layout.description,
+            "widgets": [
+                {
+                    "widget_id": w.widget_id,
+                    "widget_type": w.widget_type,
+                    "title": w.title,
+                    "metric_type": w.metric_type.value,
+                    "refresh_interval_seconds": w.refresh_interval_seconds,
+                    "configuration": w.configuration,
+                    "position": w.position
+                }
+                for w in layout.widgets
+            ],
+            "created_at": layout.created_at.isoformat(),
+            "updated_at": layout.updated_at.isoformat()
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get dashboard layout: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@analytics_app.get("/api/dashboard/widgets/{layout_id}/{widget_id}")
+async def get_widget_data(layout_id: str, widget_id: str):
+    """Get data for a specific dashboard widget."""
+    try:
+        monitoring_dashboard = await get_monitoring_dashboard()
+        widget_data = await monitoring_dashboard.get_widget_data(widget_id, layout_id)
+        
+        if "error" in widget_data:
+            raise HTTPException(status_code=404, detail=widget_data["error"])
+        
+        return widget_data
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get widget data: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@analytics_app.get("/api/dashboard/summary")
+async def get_dashboard_summary():
+    """Get overall dashboard summary."""
+    try:
+        monitoring_dashboard = await get_monitoring_dashboard()
+        summary = await monitoring_dashboard.get_dashboard_summary()
+        
+        return summary
+    except Exception as e:
+        logger.error(f"Failed to get dashboard summary: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# Diagnostic Tools Endpoints
+@analytics_app.get("/api/diagnostics/run")
+async def run_system_diagnostics(
+    categories: Optional[List[str]] = Query(None),
+    format: str = Query("json", regex="^(json|text)$")
+):
+    """Run comprehensive system diagnostics."""
+    from devsync_ai.analytics.diagnostic_tools import get_diagnostic_tools, DiagnosticCategory
+    
+    try:
+        diagnostic_tools = get_diagnostic_tools()
+        
+        # Parse categories if provided
+        diagnostic_categories = None
+        if categories:
+            diagnostic_categories = []
+            for cat in categories:
+                try:
+                    diagnostic_categories.append(DiagnosticCategory(cat))
+                except ValueError:
+                    raise HTTPException(status_code=400, detail=f"Invalid diagnostic category: {cat}")
+        
+        # Run diagnostics
+        report = await diagnostic_tools.run_comprehensive_diagnostics(diagnostic_categories)
+        
+        if format == "text":
+            report_text = await diagnostic_tools.export_diagnostic_report(report, "text")
+            return {"report": report_text, "format": "text"}
+        else:
+            return {
+                "report_id": report.report_id,
+                "generated_at": report.generated_at.isoformat(),
+                "system_info": report.system_info,
+                "issues": [
+                    {
+                        "issue_id": issue.issue_id,
+                        "category": issue.category.value,
+                        "severity": issue.severity.value,
+                        "title": issue.title,
+                        "description": issue.description,
+                        "affected_components": issue.affected_components,
+                        "recommendations": issue.recommendations,
+                        "metadata": issue.metadata,
+                        "detected_at": issue.detected_at.isoformat()
+                    }
+                    for issue in report.issues
+                ],
+                "performance_summary": report.performance_summary,
+                "recommendations": report.recommendations,
+                "overall_health_score": report.overall_health_score
+            }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"System diagnostics failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@analytics_app.get("/api/diagnostics/categories")
+async def get_diagnostic_categories():
+    """Get available diagnostic categories."""
+    from devsync_ai.analytics.diagnostic_tools import DiagnosticCategory
+    
+    return {
+        "categories": [
+            {
+                "value": category.value,
+                "name": category.value.replace("_", " ").title(),
+                "description": f"Check {category.value.replace('_', ' ')}"
+            }
+            for category in DiagnosticCategory
+        ]
+    }
+
+
+@analytics_app.get("/api/diagnostics/quick-check")
+async def quick_system_check():
+    """Perform a quick system health check."""
+    from devsync_ai.analytics.diagnostic_tools import get_diagnostic_tools, DiagnosticCategory
+    
+    try:
+        diagnostic_tools = get_diagnostic_tools()
+        
+        # Run only critical checks for quick assessment
+        quick_categories = [
+            DiagnosticCategory.SYSTEM_RESOURCES,
+            DiagnosticCategory.HOOK_PERFORMANCE,
+            DiagnosticCategory.DATABASE_CONNECTIVITY
+        ]
+        
+        report = await diagnostic_tools.run_comprehensive_diagnostics(quick_categories)
+        
+        # Return simplified response
+        critical_issues = [i for i in report.issues if i.severity.value == "critical"]
+        error_issues = [i for i in report.issues if i.severity.value == "error"]
+        
+        status = "healthy"
+        if critical_issues:
+            status = "critical"
+        elif error_issues:
+            status = "error"
+        elif report.overall_health_score < 80:
+            status = "warning"
+        
+        return {
+            "status": status,
+            "health_score": report.overall_health_score,
+            "critical_issues": len(critical_issues),
+            "error_issues": len(error_issues),
+            "total_issues": len(report.issues),
+            "top_recommendations": report.recommendations[:3],
+            "timestamp": report.generated_at.isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Quick system check failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # Voice Command Integration (Mock Implementation)

@@ -1,0 +1,230 @@
+# Security Configuration for DevSync AI Hook System
+# Copy this file to security_config.yaml and update with your values
+
+# Webhook Security Settings
+webhook_security:
+  # Secret key for webhook signature verification
+  # Generate a strong random key for production
+  secret_key: "${WEBHOOK_SECRET_KEY}"
+  
+  # Signature header name (GitHub uses X-Hub-Signature-256)
+  signature_header: "X-Hub-Signature-256"
+  
+  # Timestamp tolerance in seconds (prevents replay attacks)
+  timestamp_tolerance_seconds: 300
+  
+  # Rate limiting settings
+  rate_limiting:
+    requests_per_minute: 100
+    burst_size: 20
+    concurrent_requests: 10
+
+# Access Control Settings
+access_control:
+  # Default team configuration
+  default_team:
+    id: "default"
+    name: "Default Team"
+    description: "Default team for hook configurations"
+  
+  # Default admin user
+  default_admin:
+    user_id: "admin"
+    username: "admin"
+    email: "${ADMIN_EMAIL}"
+    
+  # Role-based permissions
+  roles:
+    viewer:
+      permissions:
+        - "read_hooks"
+        - "view_analytics"
+    
+    developer:
+      permissions:
+        - "read_hooks"
+        - "write_hooks"
+        - "execute_hooks"
+        - "view_analytics"
+    
+    team_lead:
+      permissions:
+        - "read_hooks"
+        - "write_hooks"
+        - "delete_hooks"
+        - "execute_hooks"
+        - "configure_rules"
+        - "view_analytics"
+        - "manage_team"
+    
+    admin:
+      permissions:
+        - "read_hooks"
+        - "write_hooks"
+        - "delete_hooks"
+        - "execute_hooks"
+        - "configure_rules"
+        - "view_analytics"
+        - "manage_team"
+        - "manage_security"
+
+# Audit Logging Settings
+audit_logging:
+  # Enable audit logging
+  enabled: true
+  
+  # Log file path (optional, logs to stdout if not specified)
+  log_file: "${AUDIT_LOG_FILE}"
+  
+  # Log level for audit events
+  log_level: "INFO"
+  
+  # Retention period for audit logs (days)
+  retention_days: 90
+  
+  # Events to log
+  log_events:
+    - "config_changes"
+    - "hook_operations"
+    - "security_events"
+    - "access_attempts"
+    - "webhook_events"
+
+# Rate Limiting Configuration
+rate_limiting:
+  # GitHub webhook limits
+  github:
+    requests_per_minute: 100
+    requests_per_hour: 1000
+    burst_allowance: 20
+    concurrent_requests: 10
+  
+  # JIRA webhook limits
+  jira:
+    requests_per_minute: 200
+    requests_per_hour: 2000
+    burst_allowance: 50
+    concurrent_requests: 15
+  
+  # Slack webhook limits
+  slack:
+    requests_per_minute: 60
+    requests_per_hour: 600
+    burst_allowance: 10
+    concurrent_requests: 5
+  
+  # API request limits
+  api:
+    requests_per_minute: 60
+    requests_per_hour: 1000
+    burst_allowance: 10
+    concurrent_requests: 5
+
+# Abuse Detection Settings
+abuse_detection:
+  # Enable abuse detection
+  enabled: true
+  
+  # Abuse score threshold (0.0 to 1.0)
+  threshold: 0.5
+  
+  # Block duration for high abuse scores
+  block_duration_hours: 1
+  
+  # Patterns to detect
+  patterns:
+    rapid_fire:
+      enabled: true
+      threshold: 100  # requests per minute
+      severity: "high"
+    
+    bot_behavior:
+      enabled: true
+      variance_threshold: 0.1  # timing variance
+      severity: "medium"
+    
+    brute_force:
+      enabled: true
+      failed_attempts_threshold: 10
+      severity: "critical"
+
+# Security Headers
+security_headers:
+  # Enable security headers
+  enabled: true
+  
+  # Headers to add to responses
+  headers:
+    X-Content-Type-Options: "nosniff"
+    X-Frame-Options: "DENY"
+    X-XSS-Protection: "1; mode=block"
+    Strict-Transport-Security: "max-age=31536000; includeSubDomains"
+    Content-Security-Policy: "default-src 'self'"
+
+# Encryption Settings
+encryption:
+  # Algorithm for sensitive data encryption
+  algorithm: "AES-256-GCM"
+  
+  # Key derivation settings
+  key_derivation:
+    algorithm: "PBKDF2"
+    iterations: 100000
+    salt_length: 32
+
+# Database Security
+database_security:
+  # Enable connection encryption
+  ssl_enabled: true
+  
+  # Connection timeout (seconds)
+  connection_timeout: 30
+  
+  # Query timeout (seconds)
+  query_timeout: 60
+  
+  # Enable query logging for security events
+  log_queries: false
+
+# Monitoring and Alerting
+monitoring:
+  # Enable security monitoring
+  enabled: true
+  
+  # Alert thresholds
+  alerts:
+    failed_authentications:
+      threshold: 10
+      window_minutes: 5
+    
+    rate_limit_violations:
+      threshold: 5
+      window_minutes: 1
+    
+    high_abuse_scores:
+      threshold: 0.8
+      window_minutes: 1
+  
+  # Notification channels for security alerts
+  notification_channels:
+    - type: "slack"
+      channel: "#security-alerts"
+      enabled: true
+    
+    - type: "email"
+      recipients: ["${SECURITY_EMAIL}"]
+      enabled: false
+
+# Development/Testing Settings
+development:
+  # Disable security features for development (NOT for production)
+  disable_signature_verification: false
+  disable_rate_limiting: false
+  disable_access_control: false
+  
+  # Mock data for testing
+  mock_users: false
+  mock_teams: false
+  
+  # Debug logging
+  debug_security: false

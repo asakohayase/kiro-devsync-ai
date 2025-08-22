@@ -6,7 +6,7 @@
   - Create error handling classes and utilities
   - _Requirements: 5.6, 6.2, 6.3_
 
-- [ ] 2. Implement core template factory and caching system
+- [x] 2. Implement core template factory and caching system
   - [x] 2.1 Create MessageTemplateFactory with template registration and instantiation
     - Implement template creation and caching mechanisms
     - Add template selection logic based on event types
@@ -19,7 +19,7 @@
     - Create cache invalidation strategies
     - _Requirements: 6.6_
 
-- [ ] 3. Create base template functionality and utilities
+- [x] 3. Create base template functionality and utilities
   - [x] 3.1 Implement SlackMessageTemplate base class methods
     - Write format_message abstract method definition
     - Implement add_branding method for consistent team styling

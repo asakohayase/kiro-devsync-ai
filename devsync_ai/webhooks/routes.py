@@ -11,6 +11,7 @@ from datetime import datetime
 
 from devsync_ai.config import settings
 from devsync_ai.webhooks.jira_webhook_handler import jira_webhook_router, initialize_dispatcher, shutdown_dispatcher
+from devsync_ai.webhooks.secure_webhook_handler import secure_webhook_handler
 
 
 logger = logging.getLogger(__name__)
@@ -320,7 +321,7 @@ async def webhook_health_check():
     status = {
         "status": "healthy",
         "timestamp": datetime.utcnow().isoformat(),
-        "services": ["github", "slack", "jira", "enhanced_notifications"]
+        "services": ["github", "slack", "jira", "enhanced_notifications", "security"]
     }
     
     # Test Slack connection if available
@@ -354,6 +355,22 @@ async def webhook_health_check():
         
     except Exception as e:
         status["enhanced_notifications"] = {
+            "status": "error",
+            "error": str(e)
+        }
+        status["status"] = "degraded"
+    
+    # Test security system
+    try:
+        security_status = await secure_webhook_handler.get_security_status()
+        status["security"] = security_status
+        
+        # Check if any security components have errors
+        if "error" in security_status:
+            status["status"] = "degraded"
+            
+    except Exception as e:
+        status["security"] = {
             "status": "error",
             "error": str(e)
         }
@@ -413,6 +430,21 @@ async def notification_system_stats():
     except Exception as e:
         logger.error(f"Error getting notification system stats: {e}")
         return {"error": str(e)}
+
+
+@webhook_router.get("/security/status")
+async def security_system_status():
+    """Get comprehensive security system status."""
+    try:
+        status = await secure_webhook_handler.get_security_status()
+        return status
+        
+    except Exception as e:
+        logger.error(f"Error getting security system status: {e}")
+        return {
+            "error": str(e),
+            "timestamp": datetime.utcnow().isoformat()
+        }
 
 
 @webhook_router.post("/notifications/flush")
@@ -535,102 +567,87 @@ async def github_webhook(
     x_hub_signature_256: Optional[str] = Header(None),
     x_github_delivery: Optional[str] = Header(None),
 ) -> Dict[str, Any]:
-    """Handle GitHub webhook events for JIRA integration and Slack notifications."""
-    try:
-        from devsync_ai.services.jira import JiraService
-
-        logger.info(f"🚀 Received GitHub webhook: {x_github_event} (ID: {x_github_delivery})")
-
-        # Get raw payload for signature verification
-        raw_payload = await request.body()
-        logger.info(f"📦 Raw body preview (first 200 chars): {raw_payload[:200]}")
-
-        # Verify signature if webhook secret is configured
-        if settings.github_webhook_secret:
-            if not x_hub_signature_256 or not verify_github_signature(raw_payload, x_hub_signature_256):
-                raise HTTPException(status_code=401, detail="Invalid signature")
-
-        # Parse JSON payload
+    """Handle GitHub webhook events with comprehensive security."""
+    
+    async def process_github_webhook(payload: Dict[str, Any], action: str) -> Dict[str, Any]:
+        """Process GitHub webhook payload."""
         try:
-            webhook_data = json.loads(raw_payload.decode())
-            logger.info(f"✅ Successfully parsed JSON payload")
-        except json.JSONDecodeError as e:
-            logger.error(f"❌ Invalid JSON payload: {e}")
-            logger.error(f"❌ Raw body that failed: {raw_payload}")
-            raise HTTPException(status_code=400, detail=f"Invalid JSON payload: {str(e)}")
+            logger.info(f"🚀 Processing GitHub webhook: {x_github_event} (ID: {x_github_delivery})")
+            
+            # Extract event type and action
+            event_type = payload.get("action", "unknown")
+            logger.info(f"📋 Event: {x_github_event}.{event_type}")
 
-        # Extract event type and action
-        event_type = webhook_data.get("action", "unknown")
-        logger.info(f"📋 Event: {x_github_event}.{event_type}")
+            # Handle ping events (GitHub webhook test)
+            if x_github_event == "ping":
+                logger.info("🏓 Ping event received - webhook is connected!")
+                return {
+                    "status": "pong",
+                    "message": "DevSync AI webhook is working!",
+                    "delivery_id": x_github_delivery
+                }
 
-        # Handle ping events (GitHub webhook test)
-        if x_github_event == "ping":
-            logger.info("🏓 Ping event received - webhook is connected!")
-            return {
-                "status": "pong",
-                "message": "DevSync AI webhook is working!",
-                "delivery_id": x_github_delivery
-            }
+            # Handle pull request events
+            elif x_github_event == "pull_request" and "pull_request" in payload:
+                # Send enhanced notification in background
+                pr_data = payload["pull_request"]
+                event_name = f"pull_request.{event_type}"
+                
+                # Extract team ID from repository or use default
+                team_id = payload.get("repository", {}).get("owner", {}).get("login", "default")
+                
+                # Send through enhanced notification system
+                asyncio.create_task(send_enhanced_notification(event_name, payload, team_id))
+                
+                # Also send legacy Slack notification as fallback
+                asyncio.create_task(send_slack_notification(pr_data, event_type))
+                
+                # Handle JIRA integration
+                return await handle_pr_webhook(payload, event_type)
 
-        # Handle pull request events
-        elif x_github_event == "pull_request" and "pull_request" in webhook_data:
-            # Send enhanced notification in background
-            pr_data = webhook_data["pull_request"]
-            event_name = f"pull_request.{event_type}"
-            
-            # Extract team ID from repository or use default
-            team_id = webhook_data.get("repository", {}).get("owner", {}).get("login", "default")
-            
-            # Send through enhanced notification system
-            asyncio.create_task(send_enhanced_notification(event_name, webhook_data, team_id))
-            
-            # Also send legacy Slack notification as fallback
-            asyncio.create_task(send_slack_notification(pr_data, event_type))
-            
-            # Handle JIRA integration
-            return await handle_pr_webhook(webhook_data, event_type)
+            # Handle pull request review events
+            elif x_github_event == "pull_request_review" and "review" in payload:
+                # Send enhanced notification for review events
+                pr_data = payload["pull_request"]
+                review_data = payload["review"]
+                team_id = payload.get("repository", {}).get("owner", {}).get("login", "default")
+                
+                # Map review states to notification events
+                review_state = review_data.get("state", "").lower()
+                if review_state == "approved":
+                    event_name = "pull_request.approved"
+                elif review_state == "changes_requested":
+                    event_name = "pull_request.changes_requested"
+                else:
+                    event_name = "pull_request.reviewed"
+                
+                asyncio.create_task(send_enhanced_notification(event_name, payload, team_id))
+                
+                return await handle_pr_review_webhook(payload, event_type)
 
-        # Handle pull request review events FIRST (they also contain pull_request data)
-        elif x_github_event == "pull_request_review" and "review" in webhook_data:
-            # Send enhanced notification for review events
-            pr_data = webhook_data["pull_request"]
-            review_data = webhook_data["review"]
-            team_id = webhook_data.get("repository", {}).get("owner", {}).get("login", "default")
-            
-            # Map review states to notification events
-            review_state = review_data.get("state", "").lower()
-            if review_state == "approved":
-                event_name = "pull_request.approved"
-            elif review_state == "changes_requested":
-                event_name = "pull_request.changes_requested"
             else:
-                event_name = "pull_request.reviewed"
-            
-            asyncio.create_task(send_enhanced_notification(event_name, webhook_data, team_id))
-            
-            return await handle_pr_review_webhook(webhook_data, event_type)
-
-        else:
-            # Return success for unhandled events to prevent retries
-            logger.info(f"ℹ️ Event {x_github_event} received but not processed")
-            return {
-                "message": f"Event {x_github_event} received",
-                "github_event": x_github_event,
-                "action": event_type,
-                "status": "acknowledged",
-                "delivery_id": x_github_delivery
-            }
-
-    except HTTPException:
-        raise
-    except json.JSONDecodeError as e:
-        logger.error(f"Failed to parse webhook payload: {e}")
-        return {"message": "Invalid JSON payload", "status": "error"}
-    except Exception as e:
-        logger.error(f"❌ Webhook processing error: {str(e)}", exc_info=True)
-        # Return 200 with error message instead of raising HTTPException
-        # This prevents GitHub from retrying the webhook
-        return {"message": f"Error processing webhook: {str(e)}", "status": "error"}
+                # Return success for unhandled events to prevent retries
+                logger.info(f"ℹ️ Event {x_github_event} received but not processed")
+                return {
+                    "message": f"Event {x_github_event} received",
+                    "github_event": x_github_event,
+                    "action": event_type,
+                    "status": "acknowledged",
+                    "delivery_id": x_github_delivery
+                }
+                
+        except Exception as e:
+            logger.error(f"❌ GitHub webhook processing error: {str(e)}", exc_info=True)
+            return {"message": f"Error processing webhook: {str(e)}", "status": "error"}
+    
+    # Use secure webhook handler for comprehensive security
+    return await secure_webhook_handler.process_webhook_with_security(
+        request=request,
+        webhook_source="github",
+        event_type=x_github_event or "unknown",
+        processor_func=process_github_webhook,
+        team_id="default"  # Could be extracted from payload
+    )
 
 
 async def process_jira_ticket_update(payload: Dict[str, Any]) -> Dict[str, Any]:

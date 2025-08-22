@@ -1,0 +1,173 @@
+team_id: example-team
+team_name: Example Development Team
+enabled: true
+version: 1.2.0
+default_channels:
+  status_change: '#dev-updates'
+  assignment: '#assignments'
+  comment: '#discussions'
+  blocker: '#critical-alerts'
+  general: '#general'
+notification_preferences:
+  batch_threshold: 5
+  batch_timeout_minutes: 15
+  quiet_hours:
+    enabled: true
+    start: '22:00'
+    end: 08:00
+  weekend_notifications: false
+business_hours:
+  start: 09:00
+  end: '17:00'
+  timezone: UTC
+  days:
+  - monday
+  - tuesday
+  - wednesday
+  - thursday
+  - friday
+escalation_rules:
+- condition: urgency == 'critical'
+  escalate_after_minutes: 15
+  escalate_to:
+  - '@channel'
+- condition: urgency == 'high'
+  escalate_after_minutes: 60
+  escalate_to:
+  - team-leads
+rules:
+- rule_id: high_priority_notifications
+  name: High Priority Issue Notifications
+  description: Notify immediately for high priority issues
+  hook_types:
+  - StatusChangeHook
+  - AssignmentHook
+  - PriorityChangeHook
+  enabled: true
+  priority: 10
+  conditions:
+    logic: and
+    conditions:
+    - field: ticket.priority.name
+      operator: in
+      value:
+      - High
+      - Critical
+      - Blocker
+  metadata:
+    channels:
+    - '#critical-alerts'
+    urgency_override: high
+    escalation_enabled: true
+    ignore_quiet_hours: true
+- rule_id: blocker_notifications
+  name: Blocker Issue Notifications
+  description: Immediate notifications for blocked issues
+  hook_types:
+  - StatusChangeHook
+  - BlockerHook
+  enabled: true
+  priority: 5
+  conditions:
+    logic: or
+    conditions:
+    - field: ticket.status.name
+      operator: contains
+      value: Blocked
+    - field: ticket.labels
+      operator: contains
+      value: blocked
+    - field: event.classification.category
+      operator: equals
+      value: blocker
+  metadata:
+    channels:
+    - '#critical-alerts'
+    - '#dev-updates'
+    urgency_override: critical
+    escalation_enabled: true
+    ignore_quiet_hours: true
+- rule_id: assignment_notifications
+  name: Assignment Notifications
+  description: Notify when issues are assigned to team members
+  hook_types:
+  - AssignmentHook
+  enabled: true
+  priority: 20
+  conditions:
+    logic: and
+    conditions:
+    - field: ticket.assignee.display_name
+      operator: not_equals
+      value: ''
+    - field: event.classification.affected_teams
+      operator: contains
+      value: engineering
+  metadata:
+    channels:
+    - '#assignments'
+    escalation_enabled: false
+    ignore_quiet_hours: false
+- rule_id: critical_comment_notifications
+  name: Critical Issue Comment Notifications
+  description: Notify for comments on critical issues
+  hook_types:
+  - CommentHook
+  enabled: true
+  priority: 15
+  conditions:
+    logic: and
+    conditions:
+    - field: ticket.priority.name
+      operator: in
+      value:
+      - Critical
+      - Blocker
+    - field: ticket.summary
+      operator: regex
+      value: \b(urgent|critical|blocker)\b
+      case_sensitive: false
+  metadata:
+    channels:
+    - '#discussions'
+    - '#critical-alerts'
+    escalation_enabled: false
+    ignore_quiet_hours: false
+- rule_id: production_issue_notifications
+  name: Production Issue Notifications
+  description: Special handling for production issues
+  hook_types:
+  - StatusChangeHook
+  - CreationHook
+  - AssignmentHook
+  enabled: true
+  priority: 1
+  conditions:
+    logic: or
+    conditions:
+    - field: ticket.labels
+      operator: contains
+      value: production
+    - field: ticket.components
+      operator: contains
+      value: production
+    - field: ticket.summary
+      operator: regex
+      value: \b(prod|production|live)\b
+      case_sensitive: false
+  metadata:
+    channels:
+    - '#critical-alerts'
+    - '#all-hands'
+    urgency_override: critical
+    escalation_enabled: true
+    ignore_quiet_hours: true
+configuration_metadata:
+  created_by: system
+  created_at: '2024-01-15T10:00:00Z'
+  description: Example team configuration for testing validation tools
+  last_modified: '2024-01-15T10:00:00Z'
+backup_metadata:
+  created_at: '2025-08-22T23:13:48.739810'
+  original_version: 1.2.0
+  backup_name: test_backup

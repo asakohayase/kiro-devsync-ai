@@ -271,6 +271,7 @@ def test_pagination():
     # Create a batch group directly and add many messages
     batch_group = BatchGroup(
         id="pagination_test",
+        channel_id="test-channel",
         batch_type=BatchType.PR_ACTIVITY
     )
     
