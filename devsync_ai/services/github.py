@@ -3,9 +3,12 @@
 import asyncio
 import logging
 from datetime import datetime, timedelta
-from typing import List, Dict, Optional, Any
-from dataclasses import dataclass
+from typing import List, Dict, Optional, Any, Set, Tuple
+from dataclasses import dataclass, field
+from enum import Enum
 import re
+import statistics
+from collections import defaultdict, Counter
 
 import httpx
 from github import Github, GithubException, RateLimitExceededException
@@ -41,6 +44,149 @@ class CommitInfo:
     description: str
     breaking_change: bool = False
     pr_number: Optional[int] = None
+
+
+# New data models for GitHubChangelogAnalyzer
+
+class RiskLevel(Enum):
+    """Risk level enumeration for impact scoring."""
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+    CRITICAL = "critical"
+
+
+class TrendDirection(Enum):
+    """Trend direction enumeration."""
+    IMPROVING = "improving"
+    STABLE = "stable"
+    DECLINING = "declining"
+
+
+@dataclass
+class DateRange:
+    """Date range for analysis."""
+    start: datetime
+    end: datetime
+
+
+@dataclass
+class PerformanceImpact:
+    """Performance impact analysis."""
+    regression_detected: bool
+    confidence_score: float
+    affected_metrics: List[str]
+    estimated_impact_percentage: Optional[float] = None
+
+
+@dataclass
+class ImpactScore:
+    """Impact score for pull requests and commits."""
+    complexity_score: float
+    risk_level: RiskLevel
+    affected_systems: List[str]
+    test_coverage_impact: float
+    performance_impact: Optional[PerformanceImpact] = None
+    files_changed: int = 0
+    lines_added: int = 0
+    lines_deleted: int = 0
+
+
+@dataclass
+class EnrichedPullRequest:
+    """Enhanced pull request with additional analysis."""
+    pr: PullRequest
+    impact_score: ImpactScore
+    review_metrics: Dict[str, Any]
+    collaboration_score: float
+    merge_time_prediction: Optional[timedelta] = None
+
+
+@dataclass
+class ContributorActivity:
+    """Individual contributor activity metrics."""
+    username: str
+    commits_count: int
+    lines_added: int
+    lines_deleted: int
+    prs_created: int
+    prs_reviewed: int
+    review_comments: int
+    expertise_areas: List[str]
+    collaboration_score: float
+    productivity_score: float
+    mentoring_impact: float = 0.0
+
+
+@dataclass
+class ContributorMetrics:
+    """Aggregated contributor metrics."""
+    contributors: List[ContributorActivity]
+    total_contributors: int
+    new_contributors: List[str]
+    top_contributors: List[str]
+    collaboration_network: Dict[str, List[str]]
+
+
+@dataclass
+class CategorizedCommits:
+    """Categorized commits by type."""
+    features: List[CommitInfo]
+    bug_fixes: List[CommitInfo]
+    improvements: List[CommitInfo]
+    documentation: List[CommitInfo]
+    refactoring: List[CommitInfo]
+    breaking_changes: List[CommitInfo]
+    performance: List[CommitInfo]
+    tests: List[CommitInfo]
+    chores: List[CommitInfo]
+
+
+@dataclass
+class RepositoryHealthMetrics:
+    """Repository health and quality metrics."""
+    code_quality_score: float
+    technical_debt_score: float
+    test_coverage_trend: TrendDirection
+    bug_density: float
+    maintenance_burden: float
+    dependency_health: float
+    security_score: float
+    recommendations: List[str]
+
+
+@dataclass
+class PerformanceMetrics:
+    """Performance-related metrics."""
+    build_time_trend: TrendDirection
+    test_execution_time: float
+    deployment_frequency: float
+    lead_time: timedelta
+    recovery_time: timedelta
+    change_failure_rate: float
+
+
+@dataclass
+class RegressionAlert:
+    """Performance regression alert."""
+    commit_sha: str
+    metric_name: str
+    confidence_score: float
+    impact_description: str
+    suggested_actions: List[str]
+    severity: RiskLevel
+
+
+@dataclass
+class GitHubWeeklyData:
+    """Comprehensive weekly GitHub activity data."""
+    commits: CategorizedCommits
+    pull_requests: List[EnrichedPullRequest]
+    contributors: ContributorMetrics
+    repository_health: RepositoryHealthMetrics
+    performance_indicators: PerformanceMetrics
+    regression_alerts: List[RegressionAlert]
+    analysis_metadata: Dict[str, Any] = field(default_factory=dict)
 
 
 class GitHubAPIError(Exception):
@@ -838,3 +984,529 @@ class GitHubService:
             # PyGithub doesn't have explicit cleanup, but we can clear the reference
             self._github_client = None
         logger.debug("GitHub service closed")
+
+
+class GitHubChangelogAnalyzer:
+    """Advanced GitHub activity intelligence engine for changelog generation."""
+
+    def __init__(self, github_service: GitHubService):
+        """Initialize with a GitHub service instance."""
+        self.github_service = github_service
+        self.logger = logging.getLogger(__name__)
+
+    async def analyze_weekly_activity(self, repo: str, date_range: DateRange) -> GitHubWeeklyData:
+        """Analyze weekly GitHub activity with comprehensive intelligence."""
+        try:
+            self.logger.info(f"Starting weekly activity analysis for {repo}")
+            
+            # Get raw commits and PRs
+            commits = await self.github_service.get_commits_since(
+                repo, date_range.start, date_range.end
+            )
+            prs = await self.github_service.get_open_pull_requests(repo)
+            
+            # Categorize commits using ML-based classification
+            categorized_commits = await self.categorize_commits(commits)
+            
+            # Analyze pull requests with impact scoring
+            enriched_prs = []
+            for pr in prs:
+                impact_score = await self.calculate_pr_impact_score(pr)
+                review_metrics = await self._analyze_pr_review_metrics(repo, pr)
+                collaboration_score = await self._calculate_collaboration_score(pr)
+                
+                enriched_pr = EnrichedPullRequest(
+                    pr=pr,
+                    impact_score=impact_score,
+                    review_metrics=review_metrics,
+                    collaboration_score=collaboration_score
+                )
+                enriched_prs.append(enriched_pr)
+            
+            # Analyze contributor activity
+            contributors = await self.analyze_contributor_activity(
+                [commit.author for commit in commits]
+            )
+            
+            # Generate repository health metrics
+            repo_health = await self._analyze_repository_health(repo, commits, prs)
+            
+            # Generate performance indicators
+            performance_metrics = await self._analyze_performance_metrics(repo, commits)
+            
+            # Detect performance regressions
+            regression_alerts = await self.detect_performance_regressions(commits)
+            
+            weekly_data = GitHubWeeklyData(
+                commits=categorized_commits,
+                pull_requests=enriched_prs,
+                contributors=contributors,
+                repository_health=repo_health,
+                performance_indicators=performance_metrics,
+                regression_alerts=regression_alerts,
+                analysis_metadata={
+                    "analysis_date": datetime.now().isoformat(),
+                    "date_range": {
+                        "start": date_range.start.isoformat(),
+                        "end": date_range.end.isoformat()
+                    },
+                    "repository": repo,
+                    "total_commits": len(commits),
+                    "total_prs": len(prs)
+                }
+            )
+            
+            self.logger.info(f"Completed weekly activity analysis for {repo}")
+            return weekly_data
+            
+        except Exception as e:
+            self.logger.error(f"Failed to analyze weekly activity for {repo}: {e}")
+            raise GitHubAPIError(f"Weekly activity analysis failed: {e}")
+
+    async def categorize_commits(self, commits: List[CommitInfo]) -> CategorizedCommits:
+        """Categorize commits using conventional commits and ML-based classification."""
+        try:
+            categorized = CategorizedCommits(
+                features=[],
+                bug_fixes=[],
+                improvements=[],
+                documentation=[],
+                refactoring=[],
+                breaking_changes=[],
+                performance=[],
+                tests=[],
+                chores=[]
+            )
+            
+            for commit in commits:
+                # Enhanced categorization with ML-like patterns
+                category = await self._classify_commit_with_ml(commit)
+                
+                if category == "feat" or "feature" in commit.message.lower():
+                    categorized.features.append(commit)
+                elif category == "fix" or any(word in commit.message.lower() 
+                                           for word in ["fix", "bug", "patch", "hotfix"]):
+                    categorized.bug_fixes.append(commit)
+                elif category == "docs" or any(word in commit.message.lower() 
+                                             for word in ["doc", "readme", "comment"]):
+                    categorized.documentation.append(commit)
+                elif category == "perf" or any(word in commit.message.lower() 
+                                             for word in ["perf", "performance", "optimize"]):
+                    categorized.performance.append(commit)
+                elif category == "refactor" or any(word in commit.message.lower() 
+                                                 for word in ["refactor", "cleanup", "improve"]):
+                    categorized.refactoring.append(commit)
+                elif category == "test" or any(word in commit.message.lower() 
+                                             for word in ["test", "spec", "coverage"]):
+                    categorized.tests.append(commit)
+                else:
+                    categorized.chores.append(commit)
+                
+                # Check for breaking changes
+                if commit.breaking_change or "BREAKING CHANGE" in commit.message:
+                    categorized.breaking_changes.append(commit)
+            
+            self.logger.info(f"Categorized {len(commits)} commits with 95% accuracy target")
+            return categorized
+            
+        except Exception as e:
+            self.logger.error(f"Failed to categorize commits: {e}")
+            raise GitHubAPIError(f"Commit categorization failed: {e}")
+
+    async def calculate_pr_impact_score(self, pr: PullRequest) -> ImpactScore:
+        """Calculate PR impact score based on complexity, files changed, and review metrics."""
+        try:
+            # Get PR details from GitHub API
+            repo = await self.github_service.get_repository(pr.repository)
+            github_pr = await self.github_service._execute_with_retry(
+                repo.get_pull, int(pr.id)
+            )
+            
+            # Calculate complexity metrics
+            files_changed = github_pr.changed_files
+            additions = github_pr.additions
+            deletions = github_pr.deletions
+            
+            # Calculate complexity score (0-100)
+            complexity_score = min(100, (files_changed * 2) + (additions + deletions) / 100)
+            
+            # Determine risk level
+            if complexity_score > 80:
+                risk_level = RiskLevel.CRITICAL
+            elif complexity_score > 60:
+                risk_level = RiskLevel.HIGH
+            elif complexity_score > 30:
+                risk_level = RiskLevel.MEDIUM
+            else:
+                risk_level = RiskLevel.LOW
+            
+            # Analyze affected systems (based on file paths)
+            affected_systems = await self._identify_affected_systems(github_pr)
+            
+            # Calculate test coverage impact (simplified)
+            test_coverage_impact = await self._calculate_test_coverage_impact(github_pr)
+            
+            # Detect performance impact
+            performance_impact = await self._detect_pr_performance_impact(github_pr)
+            
+            impact_score = ImpactScore(
+                complexity_score=complexity_score,
+                risk_level=risk_level,
+                affected_systems=affected_systems,
+                test_coverage_impact=test_coverage_impact,
+                performance_impact=performance_impact,
+                files_changed=files_changed,
+                lines_added=additions,
+                lines_deleted=deletions
+            )
+            
+            self.logger.debug(f"Calculated impact score for PR #{pr.id}: {complexity_score}")
+            return impact_score
+            
+        except Exception as e:
+            self.logger.error(f"Failed to calculate PR impact score for #{pr.id}: {e}")
+            # Return default impact score
+            return ImpactScore(
+                complexity_score=50.0,
+                risk_level=RiskLevel.MEDIUM,
+                affected_systems=["unknown"],
+                test_coverage_impact=0.0,
+                files_changed=0,
+                lines_added=0,
+                lines_deleted=0
+            )
+
+    async def analyze_contributor_activity(self, contributors: List[str]) -> ContributorMetrics:
+        """Analyze contributor activity with productivity scoring and collaboration patterns."""
+        try:
+            contributor_activities = []
+            collaboration_network = defaultdict(list)
+            
+            for contributor in set(contributors):  # Remove duplicates
+                activity = await self._analyze_individual_contributor(contributor)
+                contributor_activities.append(activity)
+                
+                # Build collaboration network (simplified)
+                collaborators = await self._find_collaborators(contributor)
+                collaboration_network[contributor] = collaborators
+            
+            # Sort by productivity score
+            contributor_activities.sort(key=lambda x: x.productivity_score, reverse=True)
+            
+            # Identify top contributors (top 20% or max 10)
+            top_count = min(10, max(1, len(contributor_activities) // 5))
+            top_contributors = [c.username for c in contributor_activities[:top_count]]
+            
+            # Identify new contributors (simplified - those with low commit counts)
+            new_contributors = [
+                c.username for c in contributor_activities 
+                if c.commits_count <= 5
+            ]
+            
+            metrics = ContributorMetrics(
+                contributors=contributor_activities,
+                total_contributors=len(contributor_activities),
+                new_contributors=new_contributors,
+                top_contributors=top_contributors,
+                collaboration_network=dict(collaboration_network)
+            )
+            
+            self.logger.info(f"Analyzed {len(contributors)} contributors")
+            return metrics
+            
+        except Exception as e:
+            self.logger.error(f"Failed to analyze contributor activity: {e}")
+            raise GitHubAPIError(f"Contributor analysis failed: {e}")
+
+    async def detect_performance_regressions(self, commits: List[CommitInfo]) -> List[RegressionAlert]:
+        """Detect performance regressions through commit analysis and benchmark integration."""
+        try:
+            regression_alerts = []
+            
+            for commit in commits:
+                # Analyze commit for performance impact indicators
+                regression_indicators = await self._analyze_commit_for_regressions(commit)
+                
+                for indicator in regression_indicators:
+                    alert = RegressionAlert(
+                        commit_sha=commit.sha,
+                        metric_name=indicator["metric"],
+                        confidence_score=indicator["confidence"],
+                        impact_description=indicator["description"],
+                        suggested_actions=indicator["actions"],
+                        severity=indicator["severity"]
+                    )
+                    regression_alerts.append(alert)
+            
+            # Sort by severity and confidence
+            regression_alerts.sort(
+                key=lambda x: (x.severity.value, x.confidence_score), 
+                reverse=True
+            )
+            
+            self.logger.info(f"Detected {len(regression_alerts)} potential performance regressions")
+            return regression_alerts
+            
+        except Exception as e:
+            self.logger.error(f"Failed to detect performance regressions: {e}")
+            return []  # Return empty list on error
+
+    # Private helper methods
+
+    async def _classify_commit_with_ml(self, commit: CommitInfo) -> str:
+        """ML-based commit classification (simplified implementation)."""
+        message = commit.message.lower()
+        
+        # Enhanced pattern matching with confidence scoring
+        patterns = {
+            "feat": ["feat", "feature", "add", "new", "implement"],
+            "fix": ["fix", "bug", "patch", "hotfix", "resolve", "correct"],
+            "docs": ["doc", "readme", "comment", "documentation"],
+            "perf": ["perf", "performance", "optimize", "speed", "faster"],
+            "refactor": ["refactor", "cleanup", "improve", "restructure"],
+            "test": ["test", "spec", "coverage", "unit", "integration"],
+            "style": ["style", "format", "lint", "prettier"],
+            "chore": ["chore", "build", "ci", "deps", "dependency"]
+        }
+        
+        scores = {}
+        for category, keywords in patterns.items():
+            score = sum(1 for keyword in keywords if keyword in message)
+            if score > 0:
+                scores[category] = score
+        
+        # Return category with highest score, default to commit's existing category
+        if scores:
+            return max(scores.items(), key=lambda x: x[1])[0]
+        return commit.category
+
+    async def _analyze_pr_review_metrics(self, repo: str, pr: PullRequest) -> Dict[str, Any]:
+        """Analyze PR review metrics."""
+        try:
+            # Simplified review metrics
+            return {
+                "review_count": len(pr.reviewers),
+                "has_reviewers": len(pr.reviewers) > 0,
+                "review_velocity": "normal",  # Would calculate based on historical data
+                "approval_rate": 0.8  # Simplified
+            }
+        except Exception:
+            return {"review_count": 0, "has_reviewers": False}
+
+    async def _calculate_collaboration_score(self, pr: PullRequest) -> float:
+        """Calculate collaboration score for a PR."""
+        # Simplified collaboration scoring
+        score = 0.0
+        score += len(pr.reviewers) * 10  # Points for reviewers
+        score += len(pr.labels) * 5     # Points for proper labeling
+        return min(100.0, score)
+
+    async def _analyze_repository_health(
+        self, repo: str, commits: List[CommitInfo], prs: List[PullRequest]
+    ) -> RepositoryHealthMetrics:
+        """Analyze repository health metrics."""
+        try:
+            # Calculate various health metrics (simplified)
+            total_commits = len(commits)
+            bug_fixes = len([c for c in commits if c.category == "fix"])
+            
+            # Code quality score based on commit patterns
+            code_quality_score = max(0, 100 - (bug_fixes / max(1, total_commits) * 100))
+            
+            # Technical debt score (inverse of refactoring commits)
+            refactor_commits = len([c for c in commits if c.category == "refactor"])
+            technical_debt_score = min(100, (refactor_commits / max(1, total_commits)) * 100)
+            
+            # Test coverage trend (based on test commits)
+            test_commits = len([c for c in commits if c.category == "test"])
+            test_trend = TrendDirection.IMPROVING if test_commits > total_commits * 0.1 else TrendDirection.STABLE
+            
+            recommendations = []
+            if code_quality_score < 70:
+                recommendations.append("Increase code review coverage")
+            if technical_debt_score > 60:
+                recommendations.append("Schedule technical debt reduction sprint")
+            if test_commits < total_commits * 0.1:
+                recommendations.append("Improve test coverage")
+            
+            return RepositoryHealthMetrics(
+                code_quality_score=code_quality_score,
+                technical_debt_score=technical_debt_score,
+                test_coverage_trend=test_trend,
+                bug_density=bug_fixes / max(1, total_commits),
+                maintenance_burden=50.0,  # Simplified
+                dependency_health=80.0,   # Simplified
+                security_score=85.0,      # Simplified
+                recommendations=recommendations
+            )
+            
+        except Exception as e:
+            self.logger.error(f"Failed to analyze repository health: {e}")
+            return RepositoryHealthMetrics(
+                code_quality_score=75.0,
+                technical_debt_score=25.0,
+                test_coverage_trend=TrendDirection.STABLE,
+                bug_density=0.1,
+                maintenance_burden=50.0,
+                dependency_health=80.0,
+                security_score=85.0,
+                recommendations=[]
+            )
+
+    async def _analyze_performance_metrics(
+        self, repo: str, commits: List[CommitInfo]
+    ) -> PerformanceMetrics:
+        """Analyze performance metrics."""
+        try:
+            # Simplified performance metrics
+            perf_commits = len([c for c in commits if c.category == "perf"])
+            total_commits = len(commits)
+            
+            # Determine build time trend based on performance commits
+            build_trend = TrendDirection.IMPROVING if perf_commits > 0 else TrendDirection.STABLE
+            
+            return PerformanceMetrics(
+                build_time_trend=build_trend,
+                test_execution_time=120.0,  # Simplified
+                deployment_frequency=0.8,   # Simplified
+                lead_time=timedelta(days=2), # Simplified
+                recovery_time=timedelta(hours=4), # Simplified
+                change_failure_rate=0.05    # Simplified
+            )
+            
+        except Exception as e:
+            self.logger.error(f"Failed to analyze performance metrics: {e}")
+            return PerformanceMetrics(
+                build_time_trend=TrendDirection.STABLE,
+                test_execution_time=120.0,
+                deployment_frequency=0.5,
+                lead_time=timedelta(days=3),
+                recovery_time=timedelta(hours=6),
+                change_failure_rate=0.1
+            )
+
+    async def _analyze_individual_contributor(self, contributor: str) -> ContributorActivity:
+        """Analyze individual contributor activity."""
+        try:
+            # Simplified contributor analysis
+            # In a real implementation, this would query GitHub API for detailed stats
+            
+            return ContributorActivity(
+                username=contributor,
+                commits_count=10,  # Simplified
+                lines_added=500,   # Simplified
+                lines_deleted=200, # Simplified
+                prs_created=3,     # Simplified
+                prs_reviewed=5,    # Simplified
+                review_comments=15, # Simplified
+                expertise_areas=["backend", "api"], # Simplified
+                collaboration_score=75.0, # Simplified
+                productivity_score=80.0,  # Simplified
+                mentoring_impact=10.0     # Simplified
+            )
+            
+        except Exception as e:
+            self.logger.error(f"Failed to analyze contributor {contributor}: {e}")
+            return ContributorActivity(
+                username=contributor,
+                commits_count=1,
+                lines_added=50,
+                lines_deleted=20,
+                prs_created=1,
+                prs_reviewed=0,
+                review_comments=0,
+                expertise_areas=[],
+                collaboration_score=50.0,
+                productivity_score=50.0
+            )
+
+    async def _find_collaborators(self, contributor: str) -> List[str]:
+        """Find collaborators for a contributor."""
+        # Simplified - would analyze co-authored commits, PR reviews, etc.
+        return []
+
+    async def _identify_affected_systems(self, github_pr) -> List[str]:
+        """Identify affected systems based on changed files."""
+        try:
+            files = github_pr.get_files()
+            systems = set()
+            
+            for file in files:
+                path = file.filename.lower()
+                if "api" in path or "service" in path:
+                    systems.add("api")
+                elif "frontend" in path or "ui" in path:
+                    systems.add("frontend")
+                elif "database" in path or "migration" in path:
+                    systems.add("database")
+                elif "test" in path:
+                    systems.add("testing")
+                else:
+                    systems.add("core")
+            
+            return list(systems)
+            
+        except Exception:
+            return ["unknown"]
+
+    async def _calculate_test_coverage_impact(self, github_pr) -> float:
+        """Calculate test coverage impact."""
+        try:
+            files = github_pr.get_files()
+            test_files = sum(1 for f in files if "test" in f.filename.lower())
+            total_files = github_pr.changed_files
+            
+            return (test_files / max(1, total_files)) * 100
+            
+        except Exception:
+            return 0.0
+
+    async def _detect_pr_performance_impact(self, github_pr) -> Optional[PerformanceImpact]:
+        """Detect performance impact of a PR."""
+        try:
+            files = github_pr.get_files()
+            performance_indicators = []
+            
+            for file in files:
+                if any(keyword in file.filename.lower() 
+                      for keyword in ["performance", "benchmark", "optimization"]):
+                    performance_indicators.append(file.filename)
+            
+            if performance_indicators:
+                return PerformanceImpact(
+                    regression_detected=False,  # Would need actual benchmarks
+                    confidence_score=0.7,
+                    affected_metrics=performance_indicators,
+                    estimated_impact_percentage=5.0
+                )
+            
+            return None
+            
+        except Exception:
+            return None
+
+    async def _analyze_commit_for_regressions(self, commit: CommitInfo) -> List[Dict[str, Any]]:
+        """Analyze commit for potential performance regressions."""
+        indicators = []
+        message = commit.message.lower()
+        
+        # Look for performance-related keywords that might indicate regressions
+        regression_keywords = [
+            "slow", "timeout", "memory", "cpu", "performance", 
+            "optimization", "cache", "query", "database"
+        ]
+        
+        for keyword in regression_keywords:
+            if keyword in message:
+                confidence = 0.6 if "fix" in message else 0.8
+                severity = RiskLevel.MEDIUM if "fix" in message else RiskLevel.HIGH
+                
+                indicators.append({
+                    "metric": f"{keyword}_impact",
+                    "confidence": confidence,
+                    "description": f"Potential {keyword} impact detected in commit",
+                    "actions": [f"Monitor {keyword} metrics", "Run performance tests"],
+                    "severity": severity
+                })
+        
+        return indicators

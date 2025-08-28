@@ -2,9 +2,11 @@
 
 import asyncio
 import logging
+import statistics
 from datetime import datetime, timedelta
-from typing import List, Dict, Optional, Any
+from typing import List, Dict, Optional, Any, Union
 from dataclasses import dataclass
+from enum import Enum
 
 # Fix for Python 3.13+ compatibility with JIRA library
 try:
@@ -26,6 +28,136 @@ from ..models.core import JiraTicket
 
 
 logger = logging.getLogger(__name__)
+
+
+# Enums for changelog analytics
+class TrendDirection(str, Enum):
+    """Direction of trend analysis."""
+    IMPROVING = "improving"
+    STABLE = "stable"
+    DECLINING = "declining"
+    UNKNOWN = "unknown"
+
+
+class BlockerType(str, Enum):
+    """Types of blockers that can be detected."""
+    EXPLICIT = "explicit"  # Explicitly marked as blocked
+    STALE = "stale"  # No activity for extended period
+    STATUS_BASED = "status_based"  # Status indicates blocking
+    DEPENDENCY = "dependency"  # Waiting on external dependency
+    RESOURCE = "resource"  # Waiting for resources/people
+    TECHNICAL = "technical"  # Technical impediment
+
+
+class QualityMetricType(str, Enum):
+    """Types of quality metrics."""
+    BUG_RATE = "bug_rate"
+    DEFECT_DENSITY = "defect_density"
+    REWORK_RATE = "rework_rate"
+    CYCLE_TIME_VARIANCE = "cycle_time_variance"
+
+
+# Data models for changelog analytics
+@dataclass
+class VelocityMetrics:
+    """Velocity and throughput metrics for a team or sprint."""
+    story_points_completed: int
+    story_points_committed: int
+    average_cycle_time: timedelta
+    throughput: float  # tickets per day
+    predictability_score: float  # 0-1, how consistent velocity is
+    trend_direction: TrendDirection
+    historical_velocities: List[int]  # Last N sprints
+    completion_rate: float  # percentage of committed work completed
+
+
+@dataclass
+class QualityMetrics:
+    """Quality metrics for sprint or team analysis."""
+    bug_count: int
+    defect_rate: float  # bugs per story point
+    rework_tickets: int
+    cycle_time_variance: float
+    escaped_defects: int  # bugs found after sprint completion
+    test_coverage_change: Optional[float]
+
+
+@dataclass
+class SprintAnalytics:
+    """Comprehensive sprint analysis data."""
+    sprint_id: str
+    sprint_name: str
+    start_date: datetime
+    end_date: datetime
+    velocity: VelocityMetrics
+    completion_rate: float
+    blocker_count: int
+    team_capacity_utilization: float
+    quality_metrics: QualityMetrics
+    burndown_data: List[Dict[str, Any]]
+    scope_changes: int
+    team_members: List[str]
+
+
+@dataclass
+class BlockerAnalysis:
+    """Analysis of a specific blocker."""
+    ticket_key: str
+    ticket_summary: str
+    blocker_type: BlockerType
+    duration: timedelta
+    impact_score: float  # 0-1, estimated impact on sprint/team
+    suggested_actions: List[str]
+    affected_dependencies: List[str]
+    severity: str  # low, medium, high, critical
+    assignee: Optional[str]
+    last_activity: datetime
+
+
+@dataclass
+class WorkloadAnalysis:
+    """Team workload distribution analysis."""
+    team_id: str
+    analysis_period: Dict[str, datetime]  # start_date, end_date
+    total_story_points: int
+    member_workloads: Dict[str, Dict[str, Any]]  # member -> workload data
+    capacity_utilization: float  # 0-1
+    workload_balance_score: float  # 0-1, how evenly distributed
+    overloaded_members: List[str]
+    underutilized_members: List[str]
+    burnout_risk_indicators: Dict[str, float]
+    recommendations: List[str]
+
+
+@dataclass
+class CompletionForecast:
+    """Predictive analysis for epic/milestone completion."""
+    epic_id: str
+    epic_name: str
+    current_progress: float  # 0-1
+    estimated_completion_date: datetime
+    confidence_level: float  # 0-1
+    remaining_story_points: int
+    velocity_assumptions: VelocityMetrics
+    risk_factors: List[str]
+    milestone_dependencies: List[str]
+    resource_requirements: Dict[str, Any]
+
+
+@dataclass
+class JIRAWeeklyData:
+    """Weekly JIRA data for changelog generation."""
+    week_start: datetime
+    week_end: datetime
+    tickets_completed: List[JiraTicket]
+    tickets_in_progress: List[JiraTicket]
+    tickets_created: List[JiraTicket]
+    sprint_analytics: List[SprintAnalytics]
+    blocker_analysis: List[BlockerAnalysis]
+    velocity_trends: VelocityMetrics
+    team_workload: WorkloadAnalysis
+    epic_progress: List[CompletionForecast]
+    custom_field_data: Dict[str, Any]
 
 
 @dataclass
