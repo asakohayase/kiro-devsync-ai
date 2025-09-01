@@ -209,6 +209,7 @@ class GitHubService:
         self.allowed_repository = allowed_repository or settings.github_repository
         self._github_client = None
         self._rate_limit_info: Optional[RateLimitInfo] = None
+        self._changelog_analyzer = None
 
     @property
     def github_client(self) -> Github:
@@ -1510,3 +1511,16 @@ class GitHubChangelogAnalyzer:
                 })
         
         return indicators
+
+    @property
+    def changelog_analyzer(self):
+        """Get the changelog analyzer instance (lazy loading)."""
+        if self._changelog_analyzer is None:
+            from devsync_ai.core.intelligent_data_aggregator import GitHubChangelogAnalyzer
+            self._changelog_analyzer = GitHubChangelogAnalyzer(self)
+        return self._changelog_analyzer
+
+    async def get_weekly_changelog_data(self, repo: str, week: DateRange) -> GitHubWeeklyData:
+        """Get comprehensive weekly changelog data for a repository."""
+        self._validate_repository_access(repo)
+        return await self.changelog_analyzer.analyze_weekly_activity(repo, week)

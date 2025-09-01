@@ -532,12 +532,21 @@ class SlackService:
         """Initialize the Slack service."""
         self.token = getattr(settings, 'slack_bot_token', None) or os.getenv("SLACK_BOT_TOKEN")
         self.client = None
+        self._changelog_integration = None
         
         if self.token:
             self.client = AsyncSlackClient(self.token)
             logger.info("✅ Slack service initialized")
         else:
             logger.warning("⚠️ Slack bot token not found - Slack features disabled")
+    
+    @property
+    def changelog_integration(self):
+        """Get the changelog integration instance (lazy loading)."""
+        if self._changelog_integration is None and self.client:
+            from devsync_ai.core.changelog_slack_integration import ChangelogSlackIntegration
+            self._changelog_integration = ChangelogSlackIntegration(self)
+        return self._changelog_integration
     
     async def send_message(
         self,
@@ -663,6 +672,164 @@ class SlackService:
             logger.error(f"❌ Failed to send standup summary: {e}")
             return {"ok": False, "error": str(e)}
     
+    async def send_changelog_notification(
+        self,
+        changelog_data: Dict[str, Any],
+        distribution_config: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        Send a changelog notification with advanced interactive elements.
+        
+        Args:
+            changelog_data: The formatted changelog data
+            distribution_config: Distribution configuration
+            
+        Returns:
+            Distribution results
+        """
+        if not self.client or not self.changelog_integration:
+            logger.warning("Slack changelog integration not available")
+            return {"ok": False, "error": "slack_not_configured"}
+        
+        try:
+            config = distribution_config or {}
+            result = await self.changelog_integration.distribute_changelog(
+                changelog_data, config
+            )
+            
+            if result.get("successful_deliveries", 0) > 0:
+                logger.info(f"✅ Changelog distributed to {result['successful_deliveries']} channels")
+            
+            if result.get("failed_deliveries", 0) > 0:
+                logger.warning(f"⚠️ Failed to deliver to {result['failed_deliveries']} channels")
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to send changelog notification: {e}")
+            return {"ok": False, "error": str(e)}
+    
+    async def handle_changelog_interaction(
+        self,
+        payload: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Handle interactive callbacks from changelog messages.
+        
+        Args:
+            payload: Slack interaction payload
+            
+        Returns:
+            Response for the interaction
+        """
+        if not self.changelog_integration:
+            return {
+                "response_type": "ephemeral",
+                "text": "❌ Changelog integration not available"
+            }
+        
+        try:
+            return await self.changelog_integration.handle_interactive_callback(payload)
+        except Exception as e:
+            logger.error(f"❌ Failed to handle changelog interaction: {e}")
+            return {
+                "response_type": "ephemeral",
+                "text": f"❌ Error processing interaction: {str(e)}"
+            }
+    
+    async def collect_changelog_feedback(
+        self,
+        message_ts: str,
+        channel_id: str,
+        time_window_hours: int = 24
+    ) -> Dict[str, Any]:
+        """
+        Collect and analyze feedback from a changelog message.
+        
+        Args:
+            message_ts: Message timestamp
+            channel_id: Channel ID
+            time_window_hours: Time window for feedback collection
+            
+        Returns:
+            Analyzed feedback data
+        """
+        if not self.changelog_integration:
+            return {"success": False, "error": "changelog_integration_not_available"}
+        
+        try:
+            from datetime import timedelta
+            time_window = timedelta(hours=time_window_hours)
+            
+            result = await self.changelog_integration.collect_and_analyze_feedback(
+                message_ts, channel_id, time_window
+            )
+            
+            if result.get("success"):
+                logger.info(f"✅ Collected feedback for message {message_ts}")
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to collect changelog feedback: {e}")
+            return {"success": False, "error": str(e)}
+
+    async def get_weekly_changelog_data(self, team_id: str, week_range: Dict[str, Any]) -> Dict[str, Any]:
+        """Get Slack-specific data for weekly changelog generation."""
+        if not self.client:
+            return {"error": "slack_not_configured"}
+        
+        try:
+            # This would collect Slack-specific metrics like:
+            # - Message activity patterns
+            # - Channel engagement metrics
+            # - Team communication trends
+            # For now, return placeholder data
+            return {
+                "team_id": team_id,
+                "week_range": week_range,
+                "slack_metrics": {
+                    "message_count": 0,
+                    "active_channels": [],
+                    "engagement_score": 0.0
+                }
+            }
+        except Exception as e:
+            logger.error(f"❌ Failed to get Slack changelog data: {e}")
+            return {"error": str(e)}
+    
+    async def setup_changelog_fallbacks(
+        self,
+        primary_channels: List[str],
+        fallback_config: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Setup fallback mechanisms for changelog distribution.
+        
+        Args:
+            primary_channels: Primary distribution channels
+            fallback_config: Fallback configuration
+            
+        Returns:
+            Fallback setup result
+        """
+        if not self.changelog_integration:
+            return {"success": False, "error": "changelog_integration_not_available"}
+        
+        try:
+            result = await self.changelog_integration.setup_fallback_mechanisms(
+                primary_channels, fallback_config
+            )
+            
+            if result.get("success"):
+                logger.info("✅ Changelog fallback mechanisms configured")
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to setup changelog fallbacks: {e}")
+            return {"success": False, "error": str(e)}
+
     async def test_connection(self) -> Dict[str, Any]:
         """
         Test the Slack connection.

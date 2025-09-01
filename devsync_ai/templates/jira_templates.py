@@ -961,3 +961,197 @@ class SprintChangeTemplate(JIRATemplate):
         ])
         
         return self._create_action_buttons(actions)
+
+
+class JiraAssignmentTemplate(JIRATemplate):
+    """Template for JIRA assignment change notifications with workload analysis."""
+    
+    def __init__(self):
+        """Initialize the JIRA assignment template."""
+        super().__init__()
+        self.template_name = "jira_assignment"
+    
+    def format_assignment_notification(
+        self,
+        ticket_key: str,
+        title: str,
+        assignee: str,
+        change_type: str,
+        priority: str,
+        status: str,
+        story_points: Optional[int] = None,
+        sprint: Optional[str] = None,
+        workload_info: Optional[Dict[str, Any]] = None,
+        recommendations: Optional[List[str]] = None
+    ) -> Dict[str, Any]:
+        """
+        Format assignment change notification.
+        
+        Args:
+            ticket_key: JIRA ticket key
+            title: Ticket title
+            assignee: Assignee name
+            change_type: Type of assignment change
+            priority: Ticket priority
+            status: Ticket status
+            story_points: Story points estimate
+            sprint: Sprint name
+            workload_info: Workload analysis information
+            recommendations: Workload recommendations
+            
+        Returns:
+            Formatted message with text and blocks
+        """
+        # Determine emoji based on change type and priority
+        emoji_map = {
+            "new_assignment": "🎯",
+            "reassignment": "🔄",
+            "unassignment": "❓",
+            "self_assignment": "👤"
+        }
+        
+        priority_emoji_map = {
+            "Highest": "🚨",
+            "High": "🔴",
+            "Critical": "🚨",
+            "Medium": "🟡",
+            "Low": "🟢"
+        }
+        
+        base_emoji = emoji_map.get(change_type, "📋")
+        priority_emoji = priority_emoji_map.get(priority, "")
+        
+        # Build main message text
+        if change_type == "new_assignment":
+            text = f"{base_emoji} <@{assignee}> you've been assigned {ticket_key}: {title}"
+        elif change_type == "reassignment":
+            text = f"{base_emoji} {ticket_key} has been reassigned to <@{assignee}>"
+        elif change_type == "unassignment":
+            text = f"{base_emoji} {ticket_key} is now unassigned and needs an owner"
+        else:
+            text = f"{base_emoji} Assignment change for {ticket_key}: {title}"
+        
+        # Add priority indicator
+        if priority_emoji:
+            text = f"{priority_emoji} {text}"
+        
+        # Build blocks for rich formatting
+        blocks = [
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": text
+                }
+            }
+        ]
+        
+        # Add ticket details
+        fields = [
+            {
+                "type": "mrkdwn",
+                "text": f"*Priority:* {priority}"
+            },
+            {
+                "type": "mrkdwn",
+                "text": f"*Status:* {status}"
+            }
+        ]
+        
+        if story_points:
+            fields.append({
+                "type": "mrkdwn",
+                "text": f"*Story Points:* {story_points}"
+            })
+        
+        if sprint:
+            fields.append({
+                "type": "mrkdwn",
+                "text": f"*Sprint:* {sprint}"
+            })
+        
+        blocks.append({
+            "type": "section",
+            "fields": fields
+        })
+        
+        # Add workload information if available
+        if workload_info:
+            workload_text = self._format_workload_info(workload_info)
+            if workload_text:
+                blocks.append({
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": workload_text
+                    }
+                })
+        
+        # Add recommendations if any
+        if recommendations:
+            rec_text = "*Recommendations:*\n" + "\n".join(f"• {rec}" for rec in recommendations[:3])
+            blocks.append({
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": rec_text
+                }
+            })
+        
+        # Add action buttons
+        jira_url = f"https://your-jira-instance.atlassian.net/browse/{ticket_key}"
+        blocks.append({
+            "type": "actions",
+            "elements": [
+                {
+                    "type": "button",
+                    "text": {
+                        "type": "plain_text",
+                        "text": "View in JIRA"
+                    },
+                    "url": jira_url,
+                    "style": "primary"
+                }
+            ]
+        })
+        
+        return {
+            "text": text,
+            "blocks": blocks
+        }
+    
+    def _format_workload_info(self, workload_info: Dict[str, Any]) -> str:
+        """
+        Format workload information for display.
+        
+        Args:
+            workload_info: Workload analysis data
+            
+        Returns:
+            Formatted workload text
+        """
+        try:
+            ticket_count = workload_info.get("current_ticket_count", 0)
+            story_points = workload_info.get("current_story_points", 0)
+            risk_level = workload_info.get("risk_level", "low")
+            high_priority_count = workload_info.get("high_priority_count", 0)
+            
+            workload_text = f"*Current Workload:* {ticket_count} tickets, {story_points} points"
+            
+            if risk_level != "low":
+                risk_emoji = {
+                    "moderate": "🟡",
+                    "high": "⚠️",
+                    "critical": "🚨"
+                }.get(risk_level, "")
+                
+                workload_text += f" {risk_emoji} *Risk Level:* {risk_level.upper()}"
+            
+            if high_priority_count > 0:
+                workload_text += f"\n*High Priority Items:* {high_priority_count}"
+            
+            return workload_text
+            
+        except Exception as e:
+            logger.error(f"Error formatting workload info: {e}")
+            return ""

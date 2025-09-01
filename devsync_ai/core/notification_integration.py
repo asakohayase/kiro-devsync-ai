@@ -434,6 +434,36 @@ class NotificationSystem:
             team_id=team_id
         )
     
+    async def send_changelog_notification(self,
+                                        changelog_data: Dict[str, Any],
+                                        team_id: str,
+                                        distribution_config: Optional[Dict[str, Any]] = None) -> ProcessingResult:
+        """Send changelog notification with enhanced routing and formatting."""
+        
+        # Create changelog-specific notification type
+        try:
+            changelog_notification_type = NotificationType("CHANGELOG_WEEKLY")
+        except ValueError:
+            # Fallback to existing type if not defined
+            changelog_notification_type = NotificationType.STANDUP_DAILY
+        
+        # Enhance data with distribution configuration
+        enhanced_data = {
+            **changelog_data,
+            "distribution_config": distribution_config or {},
+            "notification_type": "changelog",
+            "requires_interactive_elements": True,
+            "supports_feedback": True
+        }
+        
+        return await self.send_notification(
+            notification_type=changelog_notification_type,
+            event_type="changelog.weekly_generated",
+            data=enhanced_data,
+            team_id=team_id,
+            channel_override=distribution_config.get("primary_channel") if distribution_config else None
+        )
+    
     # Configuration management
     
     def add_team_channels(self, team_id: str, channel_mappings: Dict[str, str]) -> None:

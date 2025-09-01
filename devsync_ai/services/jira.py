@@ -195,6 +195,7 @@ class JiraService:
         self.username = username or settings.jira_username
         self.token = token or settings.jira_token
         self._jira_client = None
+        self._changelog_analyzer = None
 
         if not all([self.server_url, self.username, self.token]):
             logger.warning(
@@ -1573,3 +1574,15 @@ This ticket was automatically created from GitHub PR #{pr_number}.
         except Exception as e:
             logger.error(f"Error getting PR-ticket mappings: {e}")
             return []
+
+    @property
+    def changelog_analyzer(self):
+        """Get the changelog analyzer instance (lazy loading)."""
+        if self._changelog_analyzer is None:
+            from devsync_ai.core.intelligent_data_aggregator import JIRAChangelogAnalyzer
+            self._changelog_analyzer = JIRAChangelogAnalyzer(self)
+        return self._changelog_analyzer
+
+    async def get_weekly_changelog_data(self, team_id: str, week: DateRange) -> JIRAWeeklyData:
+        """Get comprehensive weekly changelog data for a team."""
+        return await self.changelog_analyzer.analyze_weekly_activity(team_id, week)

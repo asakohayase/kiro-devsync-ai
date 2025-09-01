@@ -1,0 +1,360 @@
+# DevSync AI Changelog Configuration
+# This file extends the existing team configuration with changelog-specific settings
+
+version: "1.0.0"
+environment: "production"
+
+# Changelog system configuration
+changelog_system:
+  enabled: true
+  debug_mode: false
+  
+  # Global scheduling settings
+  global_schedule:
+    default_day: "friday"
+    default_time: "17:00"
+    default_timezone: "UTC"
+    
+  # Data source configuration
+  data_sources:
+    github:
+      enabled: true
+      rate_limit_buffer: 100  # Reserve API calls for changelog generation
+      analysis_depth: "comprehensive"  # Options: basic, standard, comprehensive
+      
+    jira:
+      enabled: true
+      include_custom_fields: true
+      analysis_depth: "comprehensive"
+      
+    team_metrics:
+      enabled: true
+      include_productivity: true
+      include_collaboration: true
+      include_workload: true
+  
+  # Template and formatting
+  formatting:
+    default_template_style: "professional"  # Options: professional, casual, technical, executive
+    default_audience_type: "technical"      # Options: technical, business, mixed
+    enable_interactive_elements: true
+    enable_feedback_collection: true
+    
+  # Distribution settings
+  distribution:
+    max_channels_per_team: 10
+    retry_attempts: 3
+    timeout_seconds: 30
+    fallback_enabled: true
+    
+  # Performance and monitoring
+  performance:
+    generation_timeout_minutes: 10
+    max_concurrent_generations: 5
+    cache_ttl_minutes: 60
+    
+  # Storage and retention
+  storage:
+    enable_history: true
+    retention_days: 365
+    enable_analytics: true
+    enable_export: true
+
+# Team-specific changelog configurations
+team_changelog_configs:
+  engineering:
+    team_id: "engineering"
+    enabled: true
+    
+    # Scheduling
+    schedule:
+      day: "friday"
+      time: "16:00"
+      timezone: "America/New_York"
+      
+    # Data sources
+    data_sources:
+      github: true
+      jira: true
+      team_metrics: true
+      
+    # Content preferences
+    content:
+      template_style: "technical"
+      audience_type: "technical"
+      include_metrics: true
+      include_contributor_recognition: true
+      include_risk_analysis: true
+      max_commits_displayed: 20
+      max_tickets_displayed: 15
+      
+    # Distribution channels
+    distribution:
+      primary_channel: "#engineering-updates"
+      secondary_channels:
+        - "#general"
+        - "#management"
+      channel_specific_formatting:
+        "#management":
+          template_style: "executive"
+          audience_type: "business"
+          hide_technical_details: true
+        "#general":
+          template_style: "casual"
+          audience_type: "mixed"
+          
+    # Interactive features
+    interactive:
+      enable_feedback_buttons: true
+      enable_drill_down: true
+      enable_export_options: true
+      feedback_timeout_hours: 48
+      
+    # Notifications and alerts
+    notifications:
+      notify_on_generation: true
+      notify_on_failure: true
+      escalation_channels: ["#alerts"]
+      
+  product:
+    team_id: "product"
+    enabled: true
+    
+    schedule:
+      day: "thursday"
+      time: "15:00"
+      timezone: "America/Los_Angeles"
+      
+    data_sources:
+      github: false  # Product team focuses on JIRA
+      jira: true
+      team_metrics: true
+      
+    content:
+      template_style: "professional"
+      audience_type: "business"
+      include_metrics: false
+      include_contributor_recognition: false
+      include_risk_analysis: true
+      focus_on_deliverables: true
+      
+    distribution:
+      primary_channel: "#product-updates"
+      secondary_channels:
+        - "#stakeholders"
+        
+    interactive:
+      enable_feedback_buttons: true
+      enable_drill_down: false
+      
+  qa:
+    team_id: "qa"
+    enabled: true
+    
+    schedule:
+      day: "friday"
+      time: "14:00"
+      timezone: "UTC"
+      
+    data_sources:
+      github: true
+      jira: true
+      team_metrics: true
+      
+    content:
+      template_style: "professional"
+      audience_type: "technical"
+      include_metrics: true
+      focus_on_quality: true
+      include_test_coverage: true
+      include_bug_analysis: true
+      
+    distribution:
+      primary_channel: "#qa-updates"
+      secondary_channels:
+        - "#engineering-updates"
+
+# Changelog hook configurations (extends existing agent hook system)
+changelog_hooks:
+  engineering_changelog:
+    hook_id: "engineering_changelog"
+    hook_type: "ChangelogAgentHook"
+    team_id: "engineering"
+    enabled: true
+    
+    # Hook-specific configuration
+    conditions:
+      - field: "event.event_type"
+        operator: "equals"
+        value: "changelog.scheduled_generation"
+      - field: "event.context_data.team_id"
+        operator: "equals"
+        value: "engineering"
+        
+    notification_channels:
+      - "#engineering-updates"
+      - "#general"
+      
+    rate_limit_per_hour: 10
+    retry_attempts: 3
+    timeout_seconds: 600  # 10 minutes for changelog generation
+    
+    metadata:
+      changelog:
+        enabled: true
+        schedule_day: "friday"
+        schedule_time: "16:00"
+        timezone: "America/New_York"
+        include_github: true
+        include_jira: true
+        include_team_metrics: true
+        distribution_channels:
+          - "#engineering-updates"
+          - "#general"
+        template_style: "technical"
+        audience_type: "technical"
+        
+  product_changelog:
+    hook_id: "product_changelog"
+    hook_type: "ChangelogAgentHook"
+    team_id: "product"
+    enabled: true
+    
+    conditions:
+      - field: "event.event_type"
+        operator: "equals"
+        value: "changelog.scheduled_generation"
+      - field: "event.context_data.team_id"
+        operator: "equals"
+        value: "product"
+        
+    notification_channels:
+      - "#product-updates"
+      
+    rate_limit_per_hour: 5
+    retry_attempts: 3
+    timeout_seconds: 300
+    
+    metadata:
+      changelog:
+        enabled: true
+        schedule_day: "thursday"
+        schedule_time: "15:00"
+        timezone: "America/Los_Angeles"
+        include_github: false
+        include_jira: true
+        include_team_metrics: true
+        distribution_channels:
+          - "#product-updates"
+          - "#stakeholders"
+        template_style: "professional"
+        audience_type: "business"
+
+# Integration with existing notification system
+notification_integration:
+  changelog_routing:
+    enabled: true
+    
+    # Route changelog notifications to appropriate channels
+    routing_rules:
+      - name: "Engineering Changelog Routing"
+        conditions:
+          notification_type: "CHANGELOG_WEEKLY"
+          team_id: "engineering"
+        actions:
+          primary_channel: "#engineering-updates"
+          secondary_channels: ["#general"]
+          format_style: "technical"
+          
+      - name: "Product Changelog Routing"
+        conditions:
+          notification_type: "CHANGELOG_WEEKLY"
+          team_id: "product"
+        actions:
+          primary_channel: "#product-updates"
+          secondary_channels: ["#stakeholders"]
+          format_style: "business"
+          
+    # Fallback configuration
+    fallback:
+      enabled: true
+      default_channel: "#general"
+      notification_on_fallback: true
+      
+  # Deduplication rules for changelog notifications
+  deduplication:
+    changelog_rules:
+      - name: "Weekly Changelog Deduplication"
+        time_window_minutes: 1440  # 24 hours
+        fields: ["team_id", "week_start_date"]
+        action: "suppress_duplicate"
+        
+# Database configuration extensions
+database:
+  changelog_tables:
+    enable_partitioning: true
+    partition_by: "month"
+    retention_policy: "365 days"
+    
+  analytics:
+    enable_real_time: true
+    aggregation_interval: "1 hour"
+    retention_days: 90
+    
+# API endpoint extensions
+api_endpoints:
+  changelog:
+    enabled: true
+    base_path: "/api/v1/changelog"
+    authentication_required: true
+    rate_limit: "100/hour"
+    
+    endpoints:
+      - path: "/generate"
+        method: "POST"
+        description: "Manually trigger changelog generation"
+        
+      - path: "/history"
+        method: "GET"
+        description: "Get changelog history"
+        
+      - path: "/analytics"
+        method: "GET"
+        description: "Get changelog analytics"
+        
+      - path: "/export"
+        method: "POST"
+        description: "Export changelog data"
+
+# Monitoring and health checks
+monitoring:
+  health_checks:
+    changelog_generation: true
+    data_source_connectivity: true
+    distribution_success: true
+    
+  alerts:
+    generation_failure: true
+    distribution_failure: true
+    data_source_errors: true
+    performance_degradation: true
+    
+  metrics:
+    generation_time: true
+    distribution_success_rate: true
+    user_engagement: true
+    data_quality_score: true
+
+# Security configuration
+security:
+  changelog_access:
+    require_authentication: true
+    team_isolation: true
+    audit_logging: true
+    
+  data_protection:
+    encrypt_sensitive_data: true
+    redact_pii: true
+    secure_export: true
+
+last_updated: "2025-08-16T10:00:00Z"

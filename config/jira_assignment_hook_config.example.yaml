@@ -1,0 +1,314 @@
+# JIRA Assignment Hook Configuration
+# This configuration defines settings for intelligent JIRA assignment change detection,
+# workload analysis, and notification management.
+
+# Hook Configuration
+hook:
+  enabled: true
+  name: "jira_assignment_hook"
+  description: "Intelligent JIRA assignment change detection with workload analysis"
+  version: "1.0.0"
+  
+  # Execution settings
+  execution:
+    timeout_seconds: 30
+    max_retries: 3
+    retry_delay_seconds: 2
+    parallel_processing: true
+    
+  # Event filtering
+  event_filters:
+    - field: "source"
+      operator: "equals"
+      value: "jira"
+    - field: "event_type"
+      operator: "contains"
+      value: "assignment"
+    - field: "category"
+      operator: "equals"
+      value: "ASSIGNMENT"
+
+# Workload Analysis Configuration
+workload_analysis:
+  enabled: true
+  
+  # Risk calculation thresholds
+  risk_thresholds:
+    ticket_count:
+      low: 7
+      moderate: 10
+      high: 15
+    story_points:
+      low: 15
+      moderate: 25
+      high: 40
+    high_priority_count:
+      low: 1
+      moderate: 3
+      high: 5
+    overdue_count:
+      low: 0
+      moderate: 1
+      high: 3
+    sprint_capacity_utilization:
+      low: 0.9
+      moderate: 1.0
+      high: 1.2
+  
+  # Workload trend analysis
+  trend_analysis:
+    enabled: true
+    lookback_days: 14
+    trend_threshold: 0.2  # 20% change threshold
+  
+  # Conflict detection
+  conflict_detection:
+    enabled: true
+    priority_conflicts: true
+    sprint_conflicts: true
+    due_date_conflicts: true
+    due_date_window_days: 2
+
+# Notification Configuration
+notifications:
+  enabled: true
+  
+  # Notification targets
+  targets:
+    new_assignee:
+      enabled: true
+      channel_type: "direct"
+      urgency_mapping:
+        critical: "HIGH"
+        high: "MEDIUM"
+        medium: "MEDIUM"
+        low: "LOW"
+    
+    previous_assignee:
+      enabled: true
+      channel_type: "direct"
+      urgency: "LOW"
+      only_for_reassignment: true
+    
+    team_channel:
+      enabled: true
+      urgency_escalation:
+        critical_workload: "HIGH"
+        high_workload: "MEDIUM"
+        normal: "LOW"
+    
+    project_manager:
+      enabled: true
+      workload_risk_threshold: "HIGH"
+      channel_type: "direct"
+      urgency: "HIGH"
+  
+  # Message formatting
+  message_format:
+    include_workload_analysis: true
+    include_recommendations: true
+    max_recommendations: 3
+    include_action_buttons: true
+    include_jira_links: true
+  
+  # Batching and throttling
+  batching:
+    enabled: false  # Assignments are typically immediate
+    batch_size: 1
+    batch_timeout_seconds: 0
+  
+  # Deduplication
+  deduplication:
+    enabled: true
+    window_seconds: 300  # 5 minutes
+    key_fields: ["ticket_key", "new_assignee", "change_type"]
+
+# Team Configuration Mapping
+teams:
+  # Engineering team configuration
+  engineering:
+    project_keys: ["ENG", "BACKEND", "FRONTEND"]
+    slack_channels:
+      primary: "#engineering"
+      alerts: "#eng-alerts"
+    project_manager: "eng.manager"
+    workload_limits:
+      max_tickets_per_person: 12
+      max_story_points_per_person: 30
+      max_high_priority_per_person: 4
+  
+  # QA team configuration
+  qa:
+    project_keys: ["QA", "TEST"]
+    slack_channels:
+      primary: "#qa-team"
+      alerts: "#qa-alerts"
+    project_manager: "qa.lead"
+    workload_limits:
+      max_tickets_per_person: 15
+      max_story_points_per_person: 25
+      max_high_priority_per_person: 5
+  
+  # Product team configuration
+  product:
+    project_keys: ["PROD", "FEATURE"]
+    slack_channels:
+      primary: "#product-team"
+      alerts: "#product-alerts"
+    project_manager: "product.manager"
+    workload_limits:
+      max_tickets_per_person: 8
+      max_story_points_per_person: 20
+      max_high_priority_per_person: 3
+
+# JIRA Integration Settings
+jira:
+  # Field mappings for different JIRA instances
+  field_mappings:
+    story_points: "customfield_10016"
+    sprint: "customfield_10020"
+    epic_link: "customfield_10014"
+    team: "customfield_10030"
+  
+  # Priority mapping
+  priority_mapping:
+    "Blocker": "critical"
+    "Critical": "critical"
+    "Highest": "high"
+    "High": "high"
+    "Medium": "medium"
+    "Low": "low"
+    "Lowest": "low"
+  
+  # Status categories
+  status_categories:
+    todo: ["To Do", "Open", "Backlog"]
+    in_progress: ["In Progress", "In Development", "In Review"]
+    done: ["Done", "Closed", "Resolved"]
+    blocked: ["Blocked", "Impediment"]
+
+# Slack Integration Settings
+slack:
+  # Channel mapping
+  channel_mapping:
+    default: "#general"
+    engineering: "#engineering"
+    qa: "#qa-team"
+    product: "#product-team"
+  
+  # User mapping (JIRA username to Slack user ID)
+  user_mapping:
+    # Format: jira_username: slack_user_id
+    # "john.doe": "U1234567890"
+    # "jane.smith": "U0987654321"
+  
+  # Message formatting
+  message_settings:
+    use_blocks: true
+    include_emojis: true
+    mention_users: true
+    thread_replies: false
+  
+  # Rate limiting
+  rate_limiting:
+    messages_per_minute: 60
+    burst_limit: 10
+
+# Analytics and Monitoring
+analytics:
+  enabled: true
+  
+  # Metrics to track
+  metrics:
+    - assignment_changes_processed
+    - workload_risk_alerts_sent
+    - notification_delivery_success_rate
+    - average_processing_time
+    - workload_analysis_accuracy
+  
+  # Storage settings
+  storage:
+    retention_days: 90
+    aggregate_daily: true
+    export_enabled: true
+  
+  # Alerting
+  alerting:
+    enabled: true
+    thresholds:
+      processing_errors_per_hour: 5
+      notification_failures_per_hour: 10
+      average_processing_time_seconds: 10
+
+# Security Settings
+security:
+  # Webhook validation
+  webhook_validation:
+    enabled: true
+    signature_verification: true
+    ip_whitelist: []  # Empty means allow all
+  
+  # Data privacy
+  data_privacy:
+    anonymize_user_data: false
+    log_sensitive_data: false
+    encrypt_stored_data: true
+  
+  # Access control
+  access_control:
+    require_authentication: true
+    allowed_roles: ["admin", "team_lead", "project_manager"]
+
+# Development and Testing
+development:
+  # Test mode settings
+  test_mode:
+    enabled: false
+    mock_services: false
+    dry_run_notifications: false
+  
+  # Debugging
+  debug:
+    enabled: false
+    log_level: "INFO"
+    detailed_logging: false
+    performance_monitoring: true
+  
+  # Feature flags
+  feature_flags:
+    advanced_workload_analysis: true
+    predictive_workload_modeling: false
+    ai_powered_recommendations: false
+    cross_team_workload_balancing: false
+
+# Environment-specific overrides
+environments:
+  development:
+    hook:
+      execution:
+        timeout_seconds: 60
+    notifications:
+      targets:
+        team_channel:
+          enabled: false
+    analytics:
+      enabled: false
+  
+  staging:
+    notifications:
+      targets:
+        project_manager:
+          enabled: false
+    slack:
+      channel_mapping:
+        default: "#staging-notifications"
+  
+  production:
+    development:
+      debug:
+        enabled: false
+        log_level: "WARNING"
+    security:
+      webhook_validation:
+        enabled: true
+        signature_verification: true

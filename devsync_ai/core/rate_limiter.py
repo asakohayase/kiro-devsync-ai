@@ -1,554 +1,588 @@
 """
-Advanced Rate Limiting and Abuse Prevention Module
-
-Provides sophisticated rate limiting, abuse detection, and prevention
-mechanisms for the hook system.
+Intelligent rate limiting with throttling and priority queuing for changelog generation.
 """
 
-import time
 import asyncio
-from typing import Dict, List, Optional, Tuple, Any
-from dataclasses import dataclass, field
-from datetime import datetime, timedelta
-from enum import Enum
+import time
 import logging
+from datetime import datetime, timedelta
+from typing import Dict, List, Optional, Any, Callable
+from dataclasses import dataclass, field
+from enum import Enum
 import json
 from collections import defaultdict, deque
 
-logger = logging.getLogger(__name__)
+from ..analytics.performance_monitor import performance_monitor, MetricType
 
 
-class LimitType(Enum):
-    """Types of rate limits."""
-    REQUESTS_PER_SECOND = "requests_per_second"
-    REQUESTS_PER_MINUTE = "requests_per_minute"
-    REQUESTS_PER_HOUR = "requests_per_hour"
-    REQUESTS_PER_DAY = "requests_per_day"
-    CONCURRENT_REQUESTS = "concurrent_requests"
-    BANDWIDTH_PER_SECOND = "bandwidth_per_second"
+class RateLimitStrategy(Enum):
+    """Rate limiting strategies."""
+    TOKEN_BUCKET = "token_bucket"
+    SLIDING_WINDOW = "sliding_window"
+    FIXED_WINDOW = "fixed_window"
+    ADAPTIVE = "adaptive"
 
 
-class ActionType(Enum):
-    """Types of actions that can be rate limited."""
-    WEBHOOK_REQUEST = "webhook_request"
-    HOOK_EXECUTION = "hook_execution"
-    CONFIG_CHANGE = "config_change"
-    API_REQUEST = "api_request"
-    LOGIN_ATTEMPT = "login_attempt"
+class RequestPriority(Enum):
+    """Request priority levels."""
+    LOW = 1
+    NORMAL = 2
+    HIGH = 3
+    CRITICAL = 4
 
 
 @dataclass
-class RateLimit:
-    """Rate limit configuration."""
-    limit_type: LimitType
-    limit_value: int
-    window_seconds: int
-    burst_allowance: int = 0
-    description: str = ""
+class RateLimitRule:
+    """Rate limiting rule configuration."""
+    name: str
+    requests_per_second: float
+    burst_capacity: int
+    window_size_seconds: int = 60
+    strategy: RateLimitStrategy = RateLimitStrategy.TOKEN_BUCKET
+    priority_multiplier: Dict[RequestPriority, float] = field(default_factory=lambda: {
+        RequestPriority.LOW: 0.5,
+        RequestPriority.NORMAL: 1.0,
+        RequestPriority.HIGH: 1.5,
+        RequestPriority.CRITICAL: 2.0
+    })
+
+
+@dataclass
+class RateLimitBucket:
+    """Token bucket for rate limiting."""
+    capacity: int
+    tokens: float
+    last_refill: float
+    refill_rate: float  # tokens per second
+
+
+@dataclass
+class RequestContext:
+    """Context information for a rate-limited request."""
+    request_id: str
+    client_id: str
+    endpoint: str
+    priority: RequestPriority
+    team_id: Optional[str] = None
+    timestamp: float = field(default_factory=time.time)
+    metadata: Dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
 class RateLimitResult:
     """Result of rate limit check."""
     allowed: bool
-    limit_exceeded: bool
-    current_count: int
-    limit_value: int
-    reset_time: datetime
-    retry_after_seconds: Optional[int] = None
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    retry_after: Optional[float] = None
+    remaining_quota: Optional[int] = None
+    reset_time: Optional[float] = None
+    reason: Optional[str] = None
 
 
-@dataclass
-class AbusePattern:
-    """Detected abuse pattern."""
-    pattern_type: str
-    severity: str  # "low", "medium", "high", "critical"
-    description: str
-    evidence: Dict[str, Any]
-    first_detected: datetime
-    last_detected: datetime
-    occurrence_count: int = 1
-
-
-class TokenBucket:
-    """Token bucket algorithm implementation for rate limiting."""
-    
-    def __init__(self, capacity: int, refill_rate: float):
-        self.capacity = capacity
-        self.refill_rate = refill_rate  # tokens per second
-        self.tokens = capacity
-        self.last_refill = time.time()
-        self.lock = asyncio.Lock()
-    
-    async def consume(self, tokens: int = 1) -> bool:
-        """Attempt to consume tokens from the bucket."""
-        async with self.lock:
-            now = time.time()
-            
-            # Refill tokens based on elapsed time
-            elapsed = now - self.last_refill
-            self.tokens = min(
-                self.capacity,
-                self.tokens + (elapsed * self.refill_rate)
-            )
-            self.last_refill = now
-            
-            # Check if we have enough tokens
-            if self.tokens >= tokens:
-                self.tokens -= tokens
-                return True
-            
-            return False
-    
-    def get_status(self) -> Dict[str, Any]:
-        """Get current bucket status."""
-        return {
-            "capacity": self.capacity,
-            "current_tokens": self.tokens,
-            "refill_rate": self.refill_rate,
-            "last_refill": self.last_refill
-        }
-
-
-class SlidingWindowCounter:
-    """Sliding window counter for rate limiting."""
-    
-    def __init__(self, window_seconds: int, max_requests: int):
-        self.window_seconds = window_seconds
-        self.max_requests = max_requests
-        self.requests = deque()
-        self.lock = asyncio.Lock()
-    
-    async def is_allowed(self) -> Tuple[bool, int]:
-        """Check if request is allowed and return current count."""
-        async with self.lock:
-            now = time.time()
-            cutoff = now - self.window_seconds
-            
-            # Remove old requests
-            while self.requests and self.requests[0] < cutoff:
-                self.requests.popleft()
-            
-            current_count = len(self.requests)
-            
-            if current_count < self.max_requests:
-                self.requests.append(now)
-                return True, current_count + 1
-            
-            return False, current_count
-    
-    def get_reset_time(self) -> datetime:
-        """Get time when the oldest request will expire."""
-        if not self.requests:
-            return datetime.now()
-        
-        oldest_request = self.requests[0]
-        reset_time = oldest_request + self.window_seconds
-        return datetime.fromtimestamp(reset_time)
-
-
-class AbuseDetector:
-    """Detects abuse patterns in request behavior."""
+class IntelligentRateLimiter:
+    """
+    Intelligent rate limiter with adaptive throttling and priority queuing.
+    """
     
     def __init__(self):
-        self.request_patterns: Dict[str, List[float]] = defaultdict(list)
-        self.detected_patterns: Dict[str, List[AbusePattern]] = defaultdict(list)
-        self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
-    
-    def record_request(self, client_id: str, action_type: ActionType, metadata: Dict[str, Any] = None):
-        """Record a request for abuse pattern analysis."""
-        if metadata is None:
-            metadata = {}
+        self.logger = logging.getLogger(__name__)
         
-        now = time.time()
-        self.request_patterns[client_id].append(now)
+        # Rate limiting buckets per client/endpoint
+        self.buckets: Dict[str, RateLimitBucket] = {}
         
-        # Keep only last hour of requests
-        cutoff = now - 3600
-        self.request_patterns[client_id] = [
-            req_time for req_time in self.request_patterns[client_id]
-            if req_time > cutoff
-        ]
+        # Sliding window counters
+        self.sliding_windows: Dict[str, deque] = defaultdict(lambda: deque())
         
-        # Analyze patterns
-        self._analyze_patterns(client_id, action_type, metadata)
-    
-    def _analyze_patterns(self, client_id: str, action_type: ActionType, metadata: Dict[str, Any]):
-        """Analyze request patterns for abuse detection."""
-        requests = self.request_patterns[client_id]
-        if len(requests) < 10:  # Need minimum requests for pattern analysis
-            return
-        
-        now = time.time()
-        
-        # Check for rapid fire requests (potential DoS)
-        recent_requests = [req for req in requests if req > now - 60]  # Last minute
-        if len(recent_requests) > 100:
-            self._record_abuse_pattern(
-                client_id,
-                "rapid_fire",
-                "high",
-                f"Excessive requests: {len(recent_requests)} in last minute",
-                {"request_count": len(recent_requests), "time_window": 60}
-            )
-        
-        # Check for consistent timing (potential bot behavior)
-        if len(requests) >= 20:
-            intervals = [requests[i] - requests[i-1] for i in range(1, len(requests))]
-            avg_interval = sum(intervals) / len(intervals)
-            variance = sum((interval - avg_interval) ** 2 for interval in intervals) / len(intervals)
-            
-            if variance < 0.1 and avg_interval < 5:  # Very consistent timing
-                self._record_abuse_pattern(
-                    client_id,
-                    "bot_behavior",
-                    "medium",
-                    f"Consistent request timing detected (variance: {variance:.3f})",
-                    {"average_interval": avg_interval, "variance": variance}
-                )
-        
-        # Check for unusual request patterns
-        if action_type == ActionType.LOGIN_ATTEMPT:
-            failed_logins = metadata.get("failed_attempts", 0)
-            if failed_logins > 10:
-                self._record_abuse_pattern(
-                    client_id,
-                    "brute_force",
-                    "critical",
-                    f"Multiple failed login attempts: {failed_logins}",
-                    {"failed_attempts": failed_logins}
-                )
-    
-    def _record_abuse_pattern(
-        self, 
-        client_id: str, 
-        pattern_type: str, 
-        severity: str, 
-        description: str, 
-        evidence: Dict[str, Any]
-    ):
-        """Record a detected abuse pattern."""
-        now = datetime.now()
-        
-        # Check if we already have this pattern type for this client
-        existing_patterns = [
-            p for p in self.detected_patterns[client_id]
-            if p.pattern_type == pattern_type and p.last_detected > now - timedelta(hours=1)
-        ]
-        
-        if existing_patterns:
-            # Update existing pattern
-            pattern = existing_patterns[0]
-            pattern.last_detected = now
-            pattern.occurrence_count += 1
-            pattern.evidence.update(evidence)
-        else:
-            # Create new pattern
-            pattern = AbusePattern(
-                pattern_type=pattern_type,
-                severity=severity,
-                description=description,
-                evidence=evidence,
-                first_detected=now,
-                last_detected=now
-            )
-            self.detected_patterns[client_id].append(pattern)
-        
-        self.logger.warning(f"Abuse pattern detected for {client_id}: {description}")
-    
-    def get_abuse_score(self, client_id: str) -> float:
-        """Calculate abuse score for a client (0.0 to 1.0)."""
-        patterns = self.detected_patterns.get(client_id, [])
-        if not patterns:
-            return 0.0
-        
-        # Filter recent patterns (last 24 hours)
-        now = datetime.now()
-        recent_patterns = [
-            p for p in patterns
-            if p.last_detected > now - timedelta(hours=24)
-        ]
-        
-        if not recent_patterns:
-            return 0.0
-        
-        # Calculate score based on severity and frequency
-        severity_weights = {
-            "low": 0.1,
-            "medium": 0.3,
-            "high": 0.6,
-            "critical": 1.0
+        # Priority queues for throttled requests
+        self.priority_queues: Dict[RequestPriority, deque] = {
+            priority: deque() for priority in RequestPriority
         }
         
-        total_score = 0.0
-        for pattern in recent_patterns:
-            base_score = severity_weights.get(pattern.severity, 0.1)
-            frequency_multiplier = min(pattern.occurrence_count / 10, 2.0)
-            total_score += base_score * frequency_multiplier
+        # Rate limiting rules
+        self.rules: Dict[str, RateLimitRule] = {}
         
-        return min(total_score, 1.0)
+        # Adaptive rate limiting state
+        self.adaptive_state: Dict[str, Dict[str, Any]] = defaultdict(dict)
+        
+        # Request statistics
+        self.request_stats: Dict[str, Dict[str, Any]] = defaultdict(lambda: {
+            "total_requests": 0,
+            "allowed_requests": 0,
+            "throttled_requests": 0,
+            "avg_response_time": 0.0,
+            "error_rate": 0.0
+        })
+        
+        # Background task for processing throttled requests
+        self._processor_task: Optional[asyncio.Task] = None
+        
+        # Default rules
+        self._setup_default_rules()
     
-    def is_suspicious(self, client_id: str, threshold: float = 0.5) -> bool:
-        """Check if client behavior is suspicious."""
-        return self.get_abuse_score(client_id) >= threshold
-
-
-class AdvancedRateLimiter:
-    """Advanced rate limiter with multiple algorithms and abuse detection."""
+    def _setup_default_rules(self):
+        """Setup default rate limiting rules."""
+        # GitHub API rate limiting
+        self.add_rule(RateLimitRule(
+            name="github_api",
+            requests_per_second=1.0,  # Conservative for GitHub API
+            burst_capacity=10,
+            window_size_seconds=3600,  # GitHub has hourly limits
+            strategy=RateLimitStrategy.TOKEN_BUCKET
+        ))
+        
+        # JIRA API rate limiting
+        self.add_rule(RateLimitRule(
+            name="jira_api",
+            requests_per_second=2.0,
+            burst_capacity=20,
+            window_size_seconds=60,
+            strategy=RateLimitStrategy.SLIDING_WINDOW
+        ))
+        
+        # Slack API rate limiting
+        self.add_rule(RateLimitRule(
+            name="slack_api",
+            requests_per_second=1.0,
+            burst_capacity=5,
+            window_size_seconds=60,
+            strategy=RateLimitStrategy.TOKEN_BUCKET
+        ))
+        
+        # Changelog generation rate limiting
+        self.add_rule(RateLimitRule(
+            name="changelog_generation",
+            requests_per_second=0.1,  # 1 per 10 seconds
+            burst_capacity=3,
+            window_size_seconds=300,  # 5 minutes
+            strategy=RateLimitStrategy.ADAPTIVE
+        ))
+        
+        # Database query rate limiting
+        self.add_rule(RateLimitRule(
+            name="database_query",
+            requests_per_second=10.0,
+            burst_capacity=50,
+            window_size_seconds=60,
+            strategy=RateLimitStrategy.SLIDING_WINDOW
+        ))
     
-    def __init__(self):
-        self.token_buckets: Dict[str, TokenBucket] = {}
-        self.sliding_windows: Dict[str, SlidingWindowCounter] = {}
-        self.concurrent_requests: Dict[str, int] = defaultdict(int)
-        self.abuse_detector = AbuseDetector()
-        self.blocked_clients: Dict[str, datetime] = {}
-        self.rate_limits: Dict[Tuple[str, ActionType], List[RateLimit]] = {}
-        self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
+    async def start(self):
+        """Start the rate limiter and background processing."""
+        self._processor_task = asyncio.create_task(self._process_throttled_requests())
+        self.logger.info("Rate limiter started")
     
-    def configure_limits(self, client_type: str, action_type: ActionType, limits: List[RateLimit]):
-        """Configure rate limits for a client type and action."""
-        self.rate_limits[(client_type, action_type)] = limits
-        self.logger.info(f"Configured {len(limits)} rate limits for {client_type}:{action_type.value}")
+    async def stop(self):
+        """Stop the rate limiter."""
+        if self._processor_task:
+            self._processor_task.cancel()
+            try:
+                await self._processor_task
+            except asyncio.CancelledError:
+                pass
+        self.logger.info("Rate limiter stopped")
+    
+    def add_rule(self, rule: RateLimitRule):
+        """Add a rate limiting rule."""
+        self.rules[rule.name] = rule
+        self.logger.info(f"Added rate limiting rule: {rule.name}")
+    
+    def remove_rule(self, rule_name: str):
+        """Remove a rate limiting rule."""
+        if rule_name in self.rules:
+            del self.rules[rule_name]
+            self.logger.info(f"Removed rate limiting rule: {rule_name}")
     
     async def check_rate_limit(
         self,
         client_id: str,
-        client_type: str,
-        action_type: ActionType,
-        request_size: int = 1,
-        metadata: Dict[str, Any] = None
+        endpoint: str,
+        priority: RequestPriority = RequestPriority.NORMAL,
+        team_id: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None
     ) -> RateLimitResult:
-        """Check if request is within rate limits."""
-        if metadata is None:
-            metadata = {}
+        """
+        Check if a request should be rate limited.
+        """
+        request_ctx = RequestContext(
+            request_id=f"{client_id}_{endpoint}_{int(time.time() * 1000)}",
+            client_id=client_id,
+            endpoint=endpoint,
+            priority=priority,
+            team_id=team_id,
+            metadata=metadata or {}
+        )
         
-        try:
-            # Check if client is blocked
-            if client_id in self.blocked_clients:
-                block_until = self.blocked_clients[client_id]
-                if datetime.now() < block_until:
-                    return RateLimitResult(
-                        allowed=False,
-                        limit_exceeded=True,
-                        current_count=0,
-                        limit_value=0,
-                        reset_time=block_until,
-                        retry_after_seconds=int((block_until - datetime.now()).total_seconds()),
-                        metadata={"reason": "client_blocked", "blocked_until": block_until.isoformat()}
-                    )
-                else:
-                    # Unblock client
-                    del self.blocked_clients[client_id]
-            
-            # Record request for abuse detection
-            self.abuse_detector.record_request(client_id, action_type, metadata)
-            
-            # Check abuse score
-            abuse_score = self.abuse_detector.get_abuse_score(client_id)
-            if abuse_score > 0.8:  # High abuse score
-                self._block_client(client_id, timedelta(hours=1))
-                return RateLimitResult(
-                    allowed=False,
-                    limit_exceeded=True,
-                    current_count=0,
-                    limit_value=0,
-                    reset_time=datetime.now() + timedelta(hours=1),
-                    retry_after_seconds=3600,
-                    metadata={"reason": "abuse_detected", "abuse_score": abuse_score}
-                )
-            
-            # Get configured limits
-            limits = self.rate_limits.get((client_type, action_type), [])
-            if not limits:
-                # No limits configured, allow request
-                return RateLimitResult(
-                    allowed=True,
-                    limit_exceeded=False,
-                    current_count=1,
-                    limit_value=float('inf'),
-                    reset_time=datetime.now() + timedelta(days=1)
-                )
-            
-            # Check each configured limit
-            for limit in limits:
-                result = await self._check_individual_limit(client_id, limit, request_size)
-                if not result.allowed:
-                    return result
-            
-            # All limits passed
-            return RateLimitResult(
-                allowed=True,
-                limit_exceeded=False,
-                current_count=request_size,
-                limit_value=min(limit.limit_value for limit in limits),
-                reset_time=datetime.now() + timedelta(seconds=min(limit.window_seconds for limit in limits)),
-                metadata={"abuse_score": abuse_score}
-            )
-            
-        except Exception as e:
-            self.logger.error(f"Error checking rate limit: {e}")
-            # Fail open - allow request but log error
-            return RateLimitResult(
-                allowed=True,
-                limit_exceeded=False,
-                current_count=1,
-                limit_value=1,
-                reset_time=datetime.now() + timedelta(minutes=1),
-                metadata={"error": str(e)}
-            )
-    
-    async def _check_individual_limit(
-        self,
-        client_id: str,
-        limit: RateLimit,
-        request_size: int
-    ) -> RateLimitResult:
-        """Check an individual rate limit."""
-        limit_key = f"{client_id}:{limit.limit_type.value}:{limit.window_seconds}"
+        # Find applicable rule
+        rule = self._find_applicable_rule(endpoint)
+        if not rule:
+            return RateLimitResult(allowed=True)
         
-        if limit.limit_type == LimitType.CONCURRENT_REQUESTS:
-            return await self._check_concurrent_limit(client_id, limit, request_size)
-        elif limit.limit_type in [
-            LimitType.REQUESTS_PER_SECOND,
-            LimitType.REQUESTS_PER_MINUTE,
-            LimitType.REQUESTS_PER_HOUR,
-            LimitType.REQUESTS_PER_DAY
-        ]:
-            return await self._check_sliding_window_limit(limit_key, limit, request_size)
-        elif limit.limit_type == LimitType.BANDWIDTH_PER_SECOND:
-            return await self._check_token_bucket_limit(limit_key, limit, request_size)
+        # Apply rate limiting based on strategy
+        if rule.strategy == RateLimitStrategy.TOKEN_BUCKET:
+            result = await self._check_token_bucket(request_ctx, rule)
+        elif rule.strategy == RateLimitStrategy.SLIDING_WINDOW:
+            result = await self._check_sliding_window(request_ctx, rule)
+        elif rule.strategy == RateLimitStrategy.FIXED_WINDOW:
+            result = await self._check_fixed_window(request_ctx, rule)
+        elif rule.strategy == RateLimitStrategy.ADAPTIVE:
+            result = await self._check_adaptive(request_ctx, rule)
         else:
-            # Unknown limit type, allow request
+            result = RateLimitResult(allowed=True)
+        
+        # Update statistics
+        await self._update_request_stats(request_ctx, result)
+        
+        # If throttled, add to priority queue
+        if not result.allowed:
+            self.priority_queues[priority].append(request_ctx)
+            self.logger.debug(f"Request {request_ctx.request_id} throttled, added to {priority.name} queue")
+        
+        return result
+    
+    def _find_applicable_rule(self, endpoint: str) -> Optional[RateLimitRule]:
+        """Find the most specific rule that applies to the endpoint."""
+        # Direct match first
+        if endpoint in self.rules:
+            return self.rules[endpoint]
+        
+        # Pattern matching (simple prefix matching)
+        for rule_name, rule in self.rules.items():
+            if endpoint.startswith(rule_name):
+                return rule
+        
+        # Default rule if no specific match
+        return self.rules.get("default")
+    
+    async def _check_token_bucket(
+        self,
+        request_ctx: RequestContext,
+        rule: RateLimitRule
+    ) -> RateLimitResult:
+        """Check rate limit using token bucket algorithm."""
+        bucket_key = f"{rule.name}_{request_ctx.client_id}"
+        current_time = time.time()
+        
+        # Get or create bucket
+        if bucket_key not in self.buckets:
+            self.buckets[bucket_key] = RateLimitBucket(
+                capacity=rule.burst_capacity,
+                tokens=rule.burst_capacity,
+                last_refill=current_time,
+                refill_rate=rule.requests_per_second
+            )
+        
+        bucket = self.buckets[bucket_key]
+        
+        # Refill tokens based on time elapsed
+        time_elapsed = current_time - bucket.last_refill
+        tokens_to_add = time_elapsed * bucket.refill_rate
+        bucket.tokens = min(bucket.capacity, bucket.tokens + tokens_to_add)
+        bucket.last_refill = current_time
+        
+        # Apply priority multiplier
+        priority_multiplier = rule.priority_multiplier.get(request_ctx.priority, 1.0)
+        tokens_needed = 1.0 / priority_multiplier
+        
+        # Check if request can be allowed
+        if bucket.tokens >= tokens_needed:
+            bucket.tokens -= tokens_needed
             return RateLimitResult(
                 allowed=True,
-                limit_exceeded=False,
-                current_count=request_size,
-                limit_value=limit.limit_value,
-                reset_time=datetime.now() + timedelta(seconds=limit.window_seconds)
+                remaining_quota=int(bucket.tokens),
+                reset_time=current_time + (bucket.capacity - bucket.tokens) / bucket.refill_rate
             )
-    
-    async def _check_concurrent_limit(
-        self,
-        client_id: str,
-        limit: RateLimit,
-        request_size: int
-    ) -> RateLimitResult:
-        """Check concurrent request limit."""
-        current_count = self.concurrent_requests[client_id]
-        
-        if current_count + request_size > limit.limit_value:
+        else:
+            # Calculate retry after time
+            tokens_needed_for_request = tokens_needed - bucket.tokens
+            retry_after = tokens_needed_for_request / bucket.refill_rate
+            
             return RateLimitResult(
                 allowed=False,
-                limit_exceeded=True,
-                current_count=current_count,
-                limit_value=limit.limit_value,
-                reset_time=datetime.now() + timedelta(seconds=30),  # Estimate
-                retry_after_seconds=30
+                retry_after=retry_after,
+                remaining_quota=0,
+                reset_time=current_time + retry_after,
+                reason="Token bucket exhausted"
             )
-        
-        self.concurrent_requests[client_id] += request_size
-        
-        return RateLimitResult(
-            allowed=True,
-            limit_exceeded=False,
-            current_count=current_count + request_size,
-            limit_value=limit.limit_value,
-            reset_time=datetime.now() + timedelta(seconds=30)
-        )
     
-    async def _check_sliding_window_limit(
+    async def _check_sliding_window(
         self,
-        limit_key: str,
-        limit: RateLimit,
-        request_size: int
+        request_ctx: RequestContext,
+        rule: RateLimitRule
     ) -> RateLimitResult:
-        """Check sliding window rate limit."""
-        if limit_key not in self.sliding_windows:
-            self.sliding_windows[limit_key] = SlidingWindowCounter(
-                limit.window_seconds,
-                limit.limit_value
+        """Check rate limit using sliding window algorithm."""
+        window_key = f"{rule.name}_{request_ctx.client_id}"
+        current_time = time.time()
+        window_start = current_time - rule.window_size_seconds
+        
+        # Get window for this client/endpoint
+        window = self.sliding_windows[window_key]
+        
+        # Remove old entries
+        while window and window[0] < window_start:
+            window.popleft()
+        
+        # Apply priority multiplier to determine effective limit
+        priority_multiplier = rule.priority_multiplier.get(request_ctx.priority, 1.0)
+        effective_limit = int(rule.requests_per_second * rule.window_size_seconds * priority_multiplier)
+        
+        # Check if within limit
+        if len(window) < effective_limit:
+            window.append(current_time)
+            return RateLimitResult(
+                allowed=True,
+                remaining_quota=effective_limit - len(window),
+                reset_time=window[0] + rule.window_size_seconds if window else current_time
             )
-        
-        window = self.sliding_windows[limit_key]
-        allowed, current_count = await window.is_allowed()
-        
-        return RateLimitResult(
-            allowed=allowed,
-            limit_exceeded=not allowed,
-            current_count=current_count,
-            limit_value=limit.limit_value,
-            reset_time=window.get_reset_time(),
-            retry_after_seconds=limit.window_seconds if not allowed else None
-        )
+        else:
+            # Calculate retry after time (when oldest request will expire)
+            retry_after = window[0] + rule.window_size_seconds - current_time
+            
+            return RateLimitResult(
+                allowed=False,
+                retry_after=max(0, retry_after),
+                remaining_quota=0,
+                reset_time=window[0] + rule.window_size_seconds,
+                reason="Sliding window limit exceeded"
+            )
     
-    async def _check_token_bucket_limit(
+    async def _check_fixed_window(
         self,
-        limit_key: str,
-        limit: RateLimit,
-        request_size: int
+        request_ctx: RequestContext,
+        rule: RateLimitRule
     ) -> RateLimitResult:
-        """Check token bucket rate limit."""
-        if limit_key not in self.token_buckets:
-            refill_rate = limit.limit_value / limit.window_seconds
-            self.token_buckets[limit_key] = TokenBucket(
-                limit.limit_value + limit.burst_allowance,
-                refill_rate
+        """Check rate limit using fixed window algorithm."""
+        current_time = time.time()
+        window_start = int(current_time // rule.window_size_seconds) * rule.window_size_seconds
+        window_key = f"{rule.name}_{request_ctx.client_id}_{window_start}"
+        
+        # Get current window count
+        if window_key not in self.request_stats:
+            self.request_stats[window_key] = {"count": 0}
+        
+        current_count = self.request_stats[window_key]["count"]
+        
+        # Apply priority multiplier
+        priority_multiplier = rule.priority_multiplier.get(request_ctx.priority, 1.0)
+        effective_limit = int(rule.requests_per_second * rule.window_size_seconds * priority_multiplier)
+        
+        if current_count < effective_limit:
+            self.request_stats[window_key]["count"] += 1
+            return RateLimitResult(
+                allowed=True,
+                remaining_quota=effective_limit - current_count - 1,
+                reset_time=window_start + rule.window_size_seconds
             )
+        else:
+            retry_after = window_start + rule.window_size_seconds - current_time
+            return RateLimitResult(
+                allowed=False,
+                retry_after=retry_after,
+                remaining_quota=0,
+                reset_time=window_start + rule.window_size_seconds,
+                reason="Fixed window limit exceeded"
+            )
+    
+    async def _check_adaptive(
+        self,
+        request_ctx: RequestContext,
+        rule: RateLimitRule
+    ) -> RateLimitResult:
+        """Check rate limit using adaptive algorithm based on system performance."""
+        adaptive_key = f"{rule.name}_{request_ctx.client_id}"
         
-        bucket = self.token_buckets[limit_key]
-        allowed = await bucket.consume(request_size)
+        # Get current system performance metrics
+        system_health = await performance_monitor.get_system_health()
         
-        return RateLimitResult(
-            allowed=allowed,
-            limit_exceeded=not allowed,
-            current_count=request_size,
-            limit_value=limit.limit_value,
-            reset_time=datetime.now() + timedelta(seconds=limit.window_seconds),
-            retry_after_seconds=limit.window_seconds if not allowed else None,
-            metadata=bucket.get_status()
+        # Adjust rate limit based on system health
+        base_rate = rule.requests_per_second
+        
+        if system_health.status == "critical":
+            adjusted_rate = base_rate * 0.2  # Reduce to 20% of normal rate
+        elif system_health.status == "degraded":
+            adjusted_rate = base_rate * 0.5  # Reduce to 50% of normal rate
+        else:
+            # Healthy system - potentially increase rate for high priority requests
+            priority_boost = {
+                RequestPriority.LOW: 0.8,
+                RequestPriority.NORMAL: 1.0,
+                RequestPriority.HIGH: 1.2,
+                RequestPriority.CRITICAL: 1.5
+            }.get(request_ctx.priority, 1.0)
+            
+            adjusted_rate = base_rate * priority_boost
+        
+        # Store adaptive state
+        if adaptive_key not in self.adaptive_state:
+            self.adaptive_state[adaptive_key] = {
+                "last_request": 0,
+                "current_rate": adjusted_rate
+            }
+        
+        state = self.adaptive_state[adaptive_key]
+        current_time = time.time()
+        
+        # Calculate minimum interval between requests
+        min_interval = 1.0 / adjusted_rate if adjusted_rate > 0 else float('inf')
+        time_since_last = current_time - state["last_request"]
+        
+        if time_since_last >= min_interval:
+            state["last_request"] = current_time
+            state["current_rate"] = adjusted_rate
+            
+            return RateLimitResult(
+                allowed=True,
+                remaining_quota=None,  # Adaptive doesn't have fixed quota
+                reset_time=None
+            )
+        else:
+            retry_after = min_interval - time_since_last
+            return RateLimitResult(
+                allowed=False,
+                retry_after=retry_after,
+                remaining_quota=None,
+                reset_time=current_time + retry_after,
+                reason=f"Adaptive rate limit (system: {system_health.status})"
+            )
+    
+    async def _update_request_stats(self, request_ctx: RequestContext, result: RateLimitResult):
+        """Update request statistics for monitoring."""
+        stats_key = f"{request_ctx.endpoint}_{request_ctx.client_id}"
+        stats = self.request_stats[stats_key]
+        
+        stats["total_requests"] += 1
+        
+        if result.allowed:
+            stats["allowed_requests"] += 1
+        else:
+            stats["throttled_requests"] += 1
+        
+        # Record metrics
+        await performance_monitor.record_metric(
+            MetricType.THROUGHPUT,
+            1.0,
+            team_id=request_ctx.team_id,
+            metadata={
+                "endpoint": request_ctx.endpoint,
+                "client_id": request_ctx.client_id,
+                "priority": request_ctx.priority.name,
+                "allowed": result.allowed
+            }
         )
     
-    def _block_client(self, client_id: str, duration: timedelta):
-        """Block a client for a specified duration."""
-        block_until = datetime.now() + duration
-        self.blocked_clients[client_id] = block_until
-        self.logger.warning(f"Blocked client {client_id} until {block_until}")
+    async def _process_throttled_requests(self):
+        """Background task to process throttled requests when capacity becomes available."""
+        try:
+            while True:
+                # Process requests by priority (highest first)
+                for priority in sorted(RequestPriority, key=lambda p: p.value, reverse=True):
+                    queue = self.priority_queues[priority]
+                    
+                    # Process up to 10 requests per iteration
+                    processed = 0
+                    while queue and processed < 10:
+                        request_ctx = queue.popleft()
+                        
+                        # Re-check rate limit
+                        result = await self.check_rate_limit(
+                            request_ctx.client_id,
+                            request_ctx.endpoint,
+                            request_ctx.priority,
+                            request_ctx.team_id,
+                            request_ctx.metadata
+                        )
+                        
+                        if result.allowed:
+                            # Request can now proceed - notify waiting coroutine
+                            self.logger.debug(f"Throttled request {request_ctx.request_id} now allowed")
+                        else:
+                            # Still throttled - put back in queue
+                            queue.appendleft(request_ctx)
+                            break
+                        
+                        processed += 1
+                
+                await asyncio.sleep(1)  # Check every second
+                
+        except asyncio.CancelledError:
+            self.logger.info("Throttled request processor cancelled")
+            raise
+        except Exception as e:
+            self.logger.error(f"Error in throttled request processor: {e}")
+            await asyncio.sleep(5)
     
-    def release_concurrent_request(self, client_id: str, request_size: int = 1):
-        """Release concurrent request count for a client."""
-        if client_id in self.concurrent_requests:
-            self.concurrent_requests[client_id] = max(
-                0,
-                self.concurrent_requests[client_id] - request_size
-            )
-    
-    def get_client_status(self, client_id: str) -> Dict[str, Any]:
-        """Get comprehensive status for a client."""
+    def get_rate_limit_stats(self) -> Dict[str, Any]:
+        """Get comprehensive rate limiting statistics."""
+        total_requests = sum(stats["total_requests"] for stats in self.request_stats.values())
+        total_allowed = sum(stats["allowed_requests"] for stats in self.request_stats.values())
+        total_throttled = sum(stats["throttled_requests"] for stats in self.request_stats.values())
+        
+        throttle_rate = (total_throttled / total_requests * 100) if total_requests > 0 else 0
+        
+        # Queue statistics
+        queue_stats = {}
+        for priority, queue in self.priority_queues.items():
+            queue_stats[priority.name] = len(queue)
+        
+        # Bucket statistics
+        bucket_stats = {}
+        for bucket_key, bucket in self.buckets.items():
+            bucket_stats[bucket_key] = {
+                "tokens": round(bucket.tokens, 2),
+                "capacity": bucket.capacity,
+                "utilization_percent": round((1 - bucket.tokens / bucket.capacity) * 100, 2)
+            }
+        
         return {
-            "concurrent_requests": self.concurrent_requests.get(client_id, 0),
-            "abuse_score": self.abuse_detector.get_abuse_score(client_id),
-            "is_blocked": client_id in self.blocked_clients,
-            "blocked_until": self.blocked_clients.get(client_id),
-            "detected_patterns": len(self.abuse_detector.detected_patterns.get(client_id, []))
+            "overall": {
+                "total_requests": total_requests,
+                "allowed_requests": total_allowed,
+                "throttled_requests": total_throttled,
+                "throttle_rate_percent": round(throttle_rate, 2)
+            },
+            "queues": queue_stats,
+            "buckets": bucket_stats,
+            "rules": {
+                name: {
+                    "requests_per_second": rule.requests_per_second,
+                    "burst_capacity": rule.burst_capacity,
+                    "strategy": rule.strategy.value
+                }
+                for name, rule in self.rules.items()
+            },
+            "adaptive_state": {
+                key: {
+                    "current_rate": round(state.get("current_rate", 0), 2),
+                    "last_request_ago": round(time.time() - state.get("last_request", 0), 2)
+                }
+                for key, state in self.adaptive_state.items()
+            }
         }
+    
+    async def wait_for_capacity(
+        self,
+        client_id: str,
+        endpoint: str,
+        priority: RequestPriority = RequestPriority.NORMAL,
+        timeout: Optional[float] = None
+    ) -> bool:
+        """
+        Wait for rate limit capacity to become available.
+        Returns True if capacity is available, False if timeout occurred.
+        """
+        start_time = time.time()
+        
+        while True:
+            result = await self.check_rate_limit(client_id, endpoint, priority)
+            
+            if result.allowed:
+                return True
+            
+            if timeout and (time.time() - start_time) >= timeout:
+                return False
+            
+            # Wait for the suggested retry time or a minimum of 0.1 seconds
+            wait_time = max(0.1, result.retry_after or 1.0)
+            await asyncio.sleep(min(wait_time, 5.0))  # Cap wait time at 5 seconds
 
 
 # Global rate limiter instance
-rate_limiter = AdvancedRateLimiter()
-
-# Configure default rate limits
-default_webhook_limits = [
-    RateLimit(LimitType.REQUESTS_PER_MINUTE, 100, 60, burst_allowance=20),
-    RateLimit(LimitType.REQUESTS_PER_HOUR, 1000, 3600),
-    RateLimit(LimitType.CONCURRENT_REQUESTS, 10, 0)
-]
-
-default_api_limits = [
-    RateLimit(LimitType.REQUESTS_PER_MINUTE, 60, 60, burst_allowance=10),
-    RateLimit(LimitType.REQUESTS_PER_HOUR, 1000, 3600),
-    RateLimit(LimitType.CONCURRENT_REQUESTS, 5, 0)
-]
-
-rate_limiter.configure_limits("webhook", ActionType.WEBHOOK_REQUEST, default_webhook_limits)
-rate_limiter.configure_limits("api", ActionType.API_REQUEST, default_api_limits)
+rate_limiter = IntelligentRateLimiter()

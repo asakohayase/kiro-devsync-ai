@@ -15,7 +15,10 @@ class ErrorSeverity(Enum):
 class ErrorCategory(Enum):
     """Error categories for classification."""
     DATA_VALIDATION = "data_validation"
+    DATA_COLLECTION = "data_collection"
+    DATA_PROCESSING = "data_processing"
     FORMATTING = "formatting"
+    DISTRIBUTION = "distribution"
     BLOCK_KIT = "block_kit"
     SLACK_API = "slack_api"
     NETWORK = "network"
@@ -23,6 +26,9 @@ class ErrorCategory(Enum):
     RATE_LIMITING = "rate_limiting"
     AUTHENTICATION = "authentication"
     CONFIGURATION = "configuration"
+    DATABASE = "database"
+    EXTERNAL_SERVICE = "external_service"
+    SYSTEM = "system"
 
 
 class TemplateError(Exception):
@@ -202,4 +208,77 @@ class ValidationError(TemplateError):
         )
         self.validation_errors = validation_errors or []
         self.field_name = field_name
+        self.recoverable = True
+
+
+class SchedulingError(TemplateError):
+    """Raised when scheduling operations fail."""
+    
+    def __init__(self, 
+                 message: str, 
+                 schedule_id: Optional[str] = None,
+                 team_id: Optional[str] = None,
+                 original_error: Optional[Exception] = None):
+        super().__init__(
+            message,
+            severity=ErrorSeverity.HIGH,
+            category=ErrorCategory.CONFIGURATION
+        )
+        self.schedule_id = schedule_id
+        self.team_id = team_id
+        self.original_error = original_error
+        self.recoverable = True
+
+
+# Base exception for DevSync AI system
+class DevSyncError(Exception):
+    """Base exception for DevSync AI system."""
+    
+    def __init__(self, 
+                 message: str, 
+                 severity: ErrorSeverity = ErrorSeverity.MEDIUM,
+                 category: ErrorCategory = ErrorCategory.SYSTEM,
+                 context: Optional[Dict[str, Any]] = None):
+        super().__init__(message)
+        self.severity = severity
+        self.category = category
+        self.context = context or {}
+        self.recoverable = True
+
+
+class DataCollectionError(DevSyncError):
+    """Raised when data collection from external services fails."""
+    
+    def __init__(self, 
+                 message: str, 
+                 service: Optional[str] = None,
+                 operation: Optional[str] = None,
+                 original_error: Optional[Exception] = None):
+        super().__init__(
+            message,
+            severity=ErrorSeverity.HIGH,
+            category=ErrorCategory.DATA_COLLECTION
+        )
+        self.service = service
+        self.operation = operation
+        self.original_error = original_error
+        self.recoverable = True
+
+
+class DistributionError(DevSyncError):
+    """Raised when message distribution fails."""
+    
+    def __init__(self, 
+                 message: str, 
+                 channel: Optional[str] = None,
+                 distribution_type: Optional[str] = None,
+                 original_error: Optional[Exception] = None):
+        super().__init__(
+            message,
+            severity=ErrorSeverity.HIGH,
+            category=ErrorCategory.DISTRIBUTION
+        )
+        self.channel = channel
+        self.distribution_type = distribution_type
+        self.original_error = original_error
         self.recoverable = True

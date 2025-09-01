@@ -20,9 +20,15 @@ api_router = APIRouter()
 from devsync_ai.api.hook_management_routes import router as hook_management_router
 from devsync_ai.api.hook_configuration_routes import router as hook_config_router
 
+# Import changelog routes
+from devsync_ai.api.changelog_routes import router as changelog_router
+
 # Include hook management routes
 api_router.include_router(hook_management_router)
 api_router.include_router(hook_config_router)
+
+# Include changelog routes
+api_router.include_router(changelog_router, prefix="/changelog", tags=["changelog"])
 
 
 async def verify_api_key(
