@@ -11,6 +11,7 @@ import logging
 
 from .message_formatter import SlackMessage, TemplateConfig
 from .interactive_elements import InteractiveElementBuilder, default_interactive_builder
+from .formatter_factory import MessageType
 
 
 class BatchType(Enum):
