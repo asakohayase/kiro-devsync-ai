@@ -29,7 +29,7 @@ APScheduler==3.10.4
 python-multipart==0.0.6
 PyYAML==6.0.2
 psutil==5.9.6
-numpy==1.24.3
+numpy>=2.1.0
 
 # Development and testing
 pytest==7.4.3
