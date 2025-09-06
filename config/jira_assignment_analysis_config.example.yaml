@@ -1,0 +1,249 @@
+# JIRA Assignment Analysis Configuration
+# This configuration defines settings for intelligent JIRA assignment change analysis
+
+# Workload Analysis Settings
+workload_analysis:
+  # Base capacity settings
+  default_max_concurrent_tickets: 8
+  default_weekly_capacity_hours: 40.0
+  default_story_points_per_sprint: 20
+  
+  # Risk thresholds
+  risk_thresholds:
+    ticket_count:
+      moderate: 6
+      high: 8
+      critical: 12
+    story_points:
+      moderate: 15
+      high: 25
+      critical: 35
+    high_priority_count:
+      moderate: 2
+      high: 3
+      critical: 5
+    capacity_utilization:
+      moderate: 0.8
+      high: 1.0
+      critical: 1.2
+  
+  # Workload trend analysis
+  trend_analysis:
+    enabled: true
+    lookback_weeks: 4
+    velocity_calculation_sprints: 3
+
+# Notification Settings
+notifications:
+  # Slack notification preferences
+  slack:
+    enabled: true
+    default_channel: "#dev-team"
+    direct_message_assignees: true
+    mention_on_high_risk: true
+    mention_on_critical_risk: true
+    
+  # Notification scenarios
+  scenarios:
+    new_assignment:
+      enabled: true
+      notify_assignee: true
+      notify_team: true
+      include_workload_info: true
+      
+    reassignment:
+      enabled: true
+      notify_new_assignee: true
+      notify_previous_assignee: true
+      notify_team: true
+      include_handoff_context: true
+      
+    unassignment:
+      enabled: true
+      notify_team: true
+      request_volunteer: true
+      escalate_after_hours: 2
+      
+    workload_warning:
+      enabled: true
+      notify_assignee: true
+      notify_manager: true
+      include_recommendations: true
+      escalate_critical: true
+
+# Team Configuration
+teams:
+  # Default team settings
+  default:
+    max_concurrent_tickets: 8
+    weekly_capacity_hours: 40.0
+    sprint_capacity_points: 20
+    slack_channel: "#general"
+    project_manager: null
+    
+  # Engineering team
+  engineering:
+    max_concurrent_tickets: 10
+    weekly_capacity_hours: 40.0
+    sprint_capacity_points: 25
+    slack_channel: "#engineering"
+    project_manager: "engineering.manager"
+    members:
+      - "john.doe"
+      - "jane.smith"
+      - "bob.wilson"
+    
+  # QA team
+  qa:
+    max_concurrent_tickets: 6
+    weekly_capacity_hours: 35.0
+    sprint_capacity_points: 15
+    slack_channel: "#qa-team"
+    project_manager: "qa.lead"
+    members:
+      - "alice.tester"
+      - "charlie.qa"
+
+# Project Mapping
+projects:
+  # Map JIRA project keys to team configurations
+  PROJ:
+    team: "engineering"
+    priority_multiplier: 1.0
+    slack_channel: "#proj-team"
+    
+  QA:
+    team: "qa"
+    priority_multiplier: 1.2
+    slack_channel: "#qa-proj"
+    
+  INFRA:
+    team: "engineering"
+    priority_multiplier: 1.5
+    slack_channel: "#infrastructure"
+
+# Assignment Rules
+assignment_rules:
+  # Automatic validation rules
+  validation:
+    enabled: true
+    block_overload_assignments: false  # Set to true to block assignments that would overload
+    warn_on_skill_mismatch: true
+    require_manager_approval_for_critical: false
+    
+  # Skill matching
+  skill_matching:
+    enabled: true
+    weight: 0.3  # Weight in assignment recommendations
+    
+    # Skill definitions
+    skills:
+      backend:
+        keywords: ["api", "database", "server", "backend"]
+        team_members: ["john.doe", "bob.wilson"]
+        
+      frontend:
+        keywords: ["ui", "frontend", "react", "javascript"]
+        team_members: ["jane.smith"]
+        
+      testing:
+        keywords: ["test", "qa", "automation", "selenium"]
+        team_members: ["alice.tester", "charlie.qa"]
+        
+      security:
+        keywords: ["security", "auth", "encryption", "vulnerability"]
+        team_members: ["john.doe"]
+
+# Analytics and Reporting
+analytics:
+  # Data collection
+  collect_assignment_metrics: true
+  collect_workload_trends: true
+  collect_notification_effectiveness: true
+  
+  # Retention
+  data_retention_days: 90
+  
+  # Reporting
+  generate_weekly_reports: true
+  generate_monthly_summaries: true
+  
+  # Metrics to track
+  metrics:
+    - assignment_response_time
+    - workload_distribution_variance
+    - notification_engagement_rate
+    - recommendation_adoption_rate
+    - capacity_utilization_trends
+
+# Integration Settings
+integrations:
+  # JIRA integration
+  jira:
+    webhook_validation: true
+    signature_verification: true
+    rate_limiting: true
+    max_requests_per_minute: 60
+    
+  # Slack integration
+  slack:
+    rate_limiting: true
+    max_messages_per_minute: 30
+    batch_notifications: true
+    batch_delay_seconds: 5
+    
+  # Enhanced notification system
+  enhanced_notifications:
+    enabled: true
+    use_intelligent_batching: true
+    deduplicate_messages: true
+    respect_quiet_hours: true
+
+# Security Settings
+security:
+  # Webhook security
+  webhook_signature_validation: true
+  allowed_ip_ranges: []  # Empty means allow all
+  
+  # Data privacy
+  anonymize_user_data: false
+  encrypt_sensitive_fields: true
+  audit_log_access: true
+  
+  # Access control
+  require_authentication: true
+  allowed_roles: ["admin", "team_lead", "project_manager"]
+
+# Performance Settings
+performance:
+  # Caching
+  cache_workload_data: true
+  cache_ttl_minutes: 5
+  
+  # Async processing
+  max_concurrent_analyses: 10
+  analysis_timeout_seconds: 30
+  
+  # Database
+  connection_pool_size: 5
+  query_timeout_seconds: 10
+
+# Debugging and Logging
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR
+  log_webhook_payloads: false  # Set to true for debugging
+  log_notification_content: false
+  log_workload_calculations: true
+  
+  # Log destinations
+  destinations:
+    - console
+    - file
+    # - slack  # Uncomment to send error logs to Slack
+  
+  # File logging
+  file_logging:
+    enabled: true
+    path: "logs/jira_assignment_analysis.log"
+    max_size_mb: 100
+    backup_count: 5

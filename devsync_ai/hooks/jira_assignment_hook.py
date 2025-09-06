@@ -17,7 +17,7 @@ from devsync_ai.analytics.workload_analytics_engine import WorkloadAnalyticsEngi
 from devsync_ai.services.jira import JiraService
 from devsync_ai.services.slack import SlackService
 from devsync_ai.templates.jira_templates import JiraAssignmentTemplate
-from devsync_ai.core.hook_notification_integration import HookNotificationIntegration
+from devsync_ai.core.hook_notification_integration import HookNotificationIntegrator
 
 
 logger = logging.getLogger(__name__)
@@ -112,7 +112,7 @@ class JiraAssignmentHook(AgentHook):
             self.jira_service = JiraService()
             self.slack_service = SlackService()
             self.workload_engine = WorkloadAnalyticsEngine()
-            self.notification_integration = HookNotificationIntegration()
+            self.notification_integration = HookNotificationIntegrator()
             
             logger.info("✅ JIRA Assignment Hook initialized successfully")
             

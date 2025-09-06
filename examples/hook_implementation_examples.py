@@ -12,7 +12,7 @@ from dataclasses import dataclass
 
 from devsync_ai.core.agent_hooks import AgentHook, EnrichedEvent, HookExecutionResult
 from devsync_ai.core.event_classification_engine import EventCategory, UrgencyLevel
-from devsync_ai.core.hook_notification_integration import HookNotificationIntegration
+from devsync_ai.core.hook_notification_integration import HookNotificationIntegrator
 from devsync_ai.services.slack import SlackService
 from devsync_ai.services.jira import JiraService
 
@@ -38,7 +38,7 @@ class SimpleStatusChangeHook(AgentHook):
             hook_type="status_change",
             team_id=team_id
         )
-        self.notification_integration = HookNotificationIntegration()
+        self.notification_integration = HookNotificationIntegrator()
     
     def should_execute(self, event: EnrichedEvent) -> bool:
         """Determine if this hook should execute for the given event."""
@@ -138,7 +138,7 @@ class AdvancedAssignmentHook(AgentHook):
             team_id=team_id
         )
         self.max_tickets_per_assignee = max_tickets_per_assignee
-        self.notification_integration = HookNotificationIntegration()
+        self.notification_integration = HookNotificationIntegrator()
         self.jira_service = JiraService()
     
     def should_execute(self, event: EnrichedEvent) -> bool:
@@ -428,7 +428,7 @@ class CriticalBugAlertHook(AgentHook):
             hook_type="critical_bug",
             team_id=team_id
         )
-        self.notification_integration = HookNotificationIntegration()
+        self.notification_integration = HookNotificationIntegrator()
     
     def should_execute(self, event: EnrichedEvent) -> bool:
         """Execute only for critical bugs."""
@@ -632,7 +632,7 @@ class DeploymentNotificationHook(AgentHook):
             hook_type="deployment",
             team_id=team_id
         )
-        self.notification_integration = HookNotificationIntegration()
+        self.notification_integration = HookNotificationIntegrator()
     
     def should_execute(self, event: EnrichedEvent) -> bool:
         """Execute for deployment-related status changes."""

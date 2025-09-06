@@ -767,7 +767,7 @@ async def detect_and_store_blockers(tickets: list) -> None:
 
 @webhook_router.post("/jira")
 async def jira_webhook(request: Request) -> Dict[str, Any]:
-    """Handle JIRA webhook events for enhanced notifications."""
+    """Handle JIRA webhook events for enhanced notifications and assignment analysis."""
     try:
         logger.info("🚀 Received JIRA webhook")
         
@@ -777,7 +777,83 @@ async def jira_webhook(request: Request) -> Dict[str, Any]:
         # Parse JSON payload
         try:
             webhook_data = json.loads(raw_payload.decode())
-            logger.info("✅ Successfully parsed JIRA JSON payload")
+            logger.info("✅ Successfully parsed JIRA webhook payload")
+            
+            # Extract basic webhook info
+            webhook_event = webhook_data.get("webhookEvent", "unknown")
+            issue_key = webhook_data.get("issue", {}).get("key", "unknown")
+            
+            logger.info(f"📋 JIRA webhook event: {webhook_event} for {issue_key}")
+            
+            # Check if this is an assignment change
+            from devsync_ai.webhooks.jira_assignment_webhook_processor import jira_assignment_processor
+            
+            if jira_assignment_processor._is_assignment_change(webhook_data):
+                logger.info(f"🎯 Assignment change detected for {issue_key}")
+                
+                # Process assignment change
+                assignment_result = await jira_assignment_processor.process_webhook(
+                    webhook_data, dict(request.headers)
+                )
+                
+                if assignment_result.get("success"):
+                    logger.info(f"✅ Assignment change processed successfully for {issue_key}")
+                else:
+                    logger.error(f"❌ Assignment change processing failed for {issue_key}: {assignment_result.get('error')}")
+                
+                # Also send through enhanced notification system
+                try:
+                    team_id = webhook_data.get("issue", {}).get("fields", {}).get("project", {}).get("key", "default")
+                    await send_enhanced_notification(f"jira:{webhook_event}", webhook_data, team_id)
+                except Exception as e:
+                    logger.warning(f"Enhanced notification failed: {e}")
+                
+                return {
+                    "message": f"JIRA assignment change processed for {issue_key}",
+                    "webhook_event": webhook_event,
+                    "issue_key": issue_key,
+                    "assignment_processing": assignment_result,
+                    "status": "success" if assignment_result.get("success") else "partial_success"
+                }
+            
+            # Handle other JIRA webhook events
+            else:
+                logger.info(f"📋 Processing general JIRA webhook: {webhook_event}")
+                
+                # Send through enhanced notification system
+                try:
+                    team_id = webhook_data.get("issue", {}).get("fields", {}).get("project", {}).get("key", "default")
+                    await send_enhanced_notification(f"jira:{webhook_event}", webhook_data, team_id)
+                except Exception as e:
+                    logger.warning(f"Enhanced notification failed: {e}")
+                
+                # Process other JIRA events (existing logic)
+                if webhook_event == "jira:issue_updated":
+                    # Handle general issue updates
+                    await process_jira_ticket_update(webhook_data)
+                
+                return {
+                    "message": f"JIRA webhook processed for {issue_key}",
+                    "webhook_event": webhook_event,
+                    "issue_key": issue_key,
+                    "status": "success"
+                }
+            
+        except json.JSONDecodeError as e:
+            logger.error(f"❌ Failed to parse JIRA webhook JSON: {e}")
+            return {
+                "message": "Invalid JSON payload",
+                "error": str(e),
+                "status": "error"
+            }
+        
+    except Exception as e:
+        logger.error(f"❌ Error processing JIRA webhook: {e}", exc_info=True)
+        return {
+            "message": f"JIRA webhook processing failed: {str(e)}",
+            "error": str(e),
+            "status": "error"
+        }ON payload")
         except json.JSONDecodeError as e:
             logger.error(f"❌ Invalid JIRA JSON payload: {e}")
             raise HTTPException(status_code=400, detail=f"Invalid JSON payload: {str(e)}")

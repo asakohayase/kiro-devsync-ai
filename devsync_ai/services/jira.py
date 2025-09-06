@@ -745,6 +745,19 @@ class JiraService:
             logger.error(f"Failed to store tickets in database: {e}")
             raise JiraAPIError(f"Database storage failed: {e}")
 
+    async def get_assignee_tickets(self, assignee: str) -> List[JiraTicket]:
+        """Get active tickets for a specific assignee."""
+        try:
+            # Build JQL query for assignee's active tickets
+            jql_query = f'assignee = "{assignee}" AND status not in ("Done", "Closed", "Resolved") ORDER BY updated DESC'
+            
+            return await self.get_issues_by_jql(jql_query, max_results=50)
+            
+        except JiraAPIError:
+            raise
+        except Exception as e:
+            raise JiraAPIError(f"Failed to get tickets for assignee {assignee}: {e}")
+
     async def store_blocked_tickets(self, blocked_tickets: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Store detected blocked tickets in the bottlenecks table."""
         try:
