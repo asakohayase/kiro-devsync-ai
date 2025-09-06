@@ -4,14 +4,10 @@ import os
 import logging
 import asyncio
 from fastapi import APIRouter, Depends, HTTPException, Request, Form
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from typing import Dict, Any, Optional
 
 from devsync_ai.config import settings
-
-
-# Security scheme for API authentication
-security = HTTPBearer(auto_error=False)
+from devsync_ai.api.auth import verify_api_key
 
 # Main API router
 api_router = APIRouter()
@@ -31,20 +27,7 @@ api_router.include_router(hook_config_router)
 api_router.include_router(changelog_router, prefix="/changelog", tags=["changelog"])
 
 
-async def verify_api_key(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
-) -> bool:
-    """Verify API key authentication."""
-    if not settings.api_key:
-        return True  # No API key required
 
-    if not credentials:
-        raise HTTPException(status_code=401, detail="API key required")
-
-    if credentials.credentials != settings.api_key:
-        raise HTTPException(status_code=401, detail="Invalid API key")
-
-    return True
 
 
 @api_router.get("/health")

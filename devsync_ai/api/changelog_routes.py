@@ -11,7 +11,7 @@ from typing import Dict, Any, Optional, List
 from fastapi import APIRouter, Depends, HTTPException, Query, Body
 from pydantic import BaseModel, Field
 
-from devsync_ai.api.routes import verify_api_key
+from devsync_ai.api.auth import verify_api_key
 
 
 logger = logging.getLogger(__name__)
