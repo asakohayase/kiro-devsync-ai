@@ -25,6 +25,7 @@ from jira.resources import Issue, Sprint, Project
 
 from ..config import settings
 from ..models.core import JiraTicket
+from .github import DateRange
 
 
 logger = logging.getLogger(__name__)
