@@ -853,77 +853,7 @@ async def jira_webhook(request: Request) -> Dict[str, Any]:
             "message": f"JIRA webhook processing failed: {str(e)}",
             "error": str(e),
             "status": "error"
-        }ON payload")
-        except json.JSONDecodeError as e:
-            logger.error(f"❌ Invalid JIRA JSON payload: {e}")
-            raise HTTPException(status_code=400, detail=f"Invalid JSON payload: {str(e)}")
-        
-        # Extract event information
-        webhook_event = webhook_data.get("webhookEvent", "unknown")
-        issue_event_type = webhook_data.get("issue_event_type_name", "")
-        
-        logger.info(f"📋 JIRA Event: {webhook_event} - {issue_event_type}")
-        
-        # Map JIRA events to our notification system
-        event_mapping = {
-            "jira:issue_created": "jira:issue_created",
-            "jira:issue_updated": "jira:issue_updated",
-            "jira:issue_deleted": "jira:issue_deleted",
-            "jira:issue_assigned": "jira:issue_assigned",
-            "jira:issue_commented": "jira:issue_commented"
         }
-        
-        # Determine event type
-        if webhook_event == "jira:issue_updated":
-            # Check what was updated
-            changelog = webhook_data.get("changelog", {})
-            items = changelog.get("items", [])
-            
-            for item in items:
-                field = item.get("field", "")
-                if field == "status":
-                    event_type = "jira:issue_updated"
-                    break
-                elif field == "priority":
-                    event_type = "jira:issue_priority_changed"
-                    break
-                elif field == "assignee":
-                    event_type = "jira:issue_assigned"
-                    break
-            else:
-                event_type = "jira:issue_updated"
-        else:
-            event_type = event_mapping.get(webhook_event, webhook_event)
-        
-        # Extract team ID from project key or use default
-        issue_data = webhook_data.get("issue", {})
-        project_key = issue_data.get("fields", {}).get("project", {}).get("key", "default")
-        team_id = f"project_{project_key.lower()}"
-        
-        # Send enhanced notification in background
-        asyncio.create_task(send_enhanced_notification(event_type, webhook_data, team_id))
-        
-        # Process JIRA ticket update in background
-        asyncio.create_task(
-            process_jira_update_background(
-                f"jira_webhook_{issue_data.get('key', 'unknown')}",
-                process_jira_ticket_update,
-                webhook_data
-            )
-        )
-        
-        return {
-            "message": f"JIRA webhook {webhook_event} processed",
-            "event_type": event_type,
-            "issue_key": issue_data.get("key", "unknown"),
-            "status": "processing_background"
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"❌ JIRA webhook processing error: {str(e)}", exc_info=True)
-        return {"message": f"Error processing JIRA webhook: {str(e)}", "status": "error"}
 
 
 @webhook_router.post("/slack")
