@@ -14,7 +14,7 @@ from fastapi import APIRouter, Request, HTTPException
 from devsync_ai.hooks.jira_assignment_hook import JiraAssignmentHook
 from devsync_ai.core.agent_hook_dispatcher import default_hook_dispatcher
 from devsync_ai.core.event_classification_engine import EventClassificationEngine, EventCategory, UrgencyLevel
-from devsync_ai.core.enhanced_notification_handler import EnrichedEvent
+from devsync_ai.core.agent_hooks import EnrichedEvent
 from devsync_ai.webhooks.secure_webhook_handler import secure_webhook_handler
 
 

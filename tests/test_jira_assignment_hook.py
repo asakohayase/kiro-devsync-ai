@@ -19,7 +19,7 @@ from devsync_ai.hooks.jira_assignment_hook import (
     WorkloadAnalysis,
     NotificationTarget
 )
-from devsync_ai.core.enhanced_notification_handler import EnrichedEvent
+from devsync_ai.core.agent_hooks import EnrichedEvent
 from devsync_ai.core.event_classification_engine import EventCategory, UrgencyLevel
 from devsync_ai.core.agent_hooks import HookExecutionResult
 

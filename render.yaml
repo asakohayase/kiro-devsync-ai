@@ -30,3 +30,13 @@ services:
         value: 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
       - key: GITHUB_WEBHOOK_SECRET
         value: 0de4836d22ee0760a1931983c5bd6c7f237107e7b95d1dda19a5ab928a93ae70
+      - key: SLACK_BOT_TOKEN
+        value: xoxb-9301737233381-9301407309910-kU7YzKrHiFkcCkfR8hSGp7bun
+      - key: SLACK_SIGNING_SECRET
+        value: e78345496985f46ed072cc526a4b3368
+      - key: SLACK_DEFAULT_CHANNEL
+        value: "#devsync-test"
+      - key: STANDUP_TIME
+        value: "09:00"
+      - key: CHANGELOG_DAY
+        value: friday

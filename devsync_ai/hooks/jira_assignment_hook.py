@@ -97,9 +97,22 @@ class JiraAssignmentHook(AgentHook):
     - Sends targeted Slack notifications
     """
     
-    def __init__(self):
+    def __init__(self, hook_id: str = "jira_assignment_hook", team_id: str = "default"):
         """Initialize the JIRA assignment hook."""
-        super().__init__()
+        from devsync_ai.core.agent_hooks import HookConfiguration
+        
+        configuration = HookConfiguration(
+            hook_id=hook_id,
+            hook_type="jira_assignment",
+            team_id=team_id,
+            enabled=True,
+            notification_channels=["#devsync-test"],
+            rate_limit_per_hour=100,
+            retry_attempts=3,
+            timeout_seconds=30
+        )
+        
+        super().__init__(hook_id, configuration)
         self.jira_service = None
         self.slack_service = None
         self.workload_engine = None
@@ -119,6 +132,23 @@ class JiraAssignmentHook(AgentHook):
         except Exception as e:
             logger.error(f"❌ Failed to initialize JIRA Assignment Hook: {e}")
             raise
+    
+    async def can_handle(self, event: EnrichedEvent) -> bool:
+        """
+        Check if this hook can handle the given event.
+        
+        Args:
+            event: The enriched event to check
+            
+        Returns:
+            True if this hook can handle the event
+        """
+        # Check if this is a JIRA assignment change event
+        return (
+            event.source == "jira" and
+            event.category == EventCategory.ASSIGNMENT and
+            event.event_type in ["jira:assignment_change", "jira:issue_updated"]
+        )
     
     def should_execute(self, event: EnrichedEvent) -> bool:
         """

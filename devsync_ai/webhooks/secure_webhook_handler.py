@@ -28,9 +28,8 @@ from devsync_ai.core.audit_logger import (
 )
 from devsync_ai.core.rate_limiter import (
     rate_limiter,
-    ActionType,
-    RateLimit,
-    LimitType
+    RequestPriority,
+    RateLimitResult
 )
 from devsync_ai.config import settings
 
@@ -43,9 +42,6 @@ class SecureWebhookHandler:
     def __init__(self):
         self.security_manager = self._initialize_security_manager()
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
-        
-        # Configure rate limits for different webhook sources
-        self._configure_rate_limits()
         
         # Initialize access control
         access_control_manager.initialize_default_users_and_teams()
@@ -61,31 +57,7 @@ class SecureWebhookHandler:
         )
         return WebhookSecurityManager(config)
     
-    def _configure_rate_limits(self):
-        """Configure rate limits for different webhook sources."""
-        # GitHub webhook limits
-        github_limits = [
-            RateLimit(LimitType.REQUESTS_PER_MINUTE, 100, 60, burst_allowance=20),
-            RateLimit(LimitType.REQUESTS_PER_HOUR, 1000, 3600),
-            RateLimit(LimitType.CONCURRENT_REQUESTS, 10, 0)
-        ]
-        rate_limiter.configure_limits("github", ActionType.WEBHOOK_REQUEST, github_limits)
-        
-        # JIRA webhook limits
-        jira_limits = [
-            RateLimit(LimitType.REQUESTS_PER_MINUTE, 200, 60, burst_allowance=50),
-            RateLimit(LimitType.REQUESTS_PER_HOUR, 2000, 3600),
-            RateLimit(LimitType.CONCURRENT_REQUESTS, 15, 0)
-        ]
-        rate_limiter.configure_limits("jira", ActionType.WEBHOOK_REQUEST, jira_limits)
-        
-        # Slack webhook limits
-        slack_limits = [
-            RateLimit(LimitType.REQUESTS_PER_MINUTE, 60, 60, burst_allowance=10),
-            RateLimit(LimitType.REQUESTS_PER_HOUR, 600, 3600),
-            RateLimit(LimitType.CONCURRENT_REQUESTS, 5, 0)
-        ]
-        rate_limiter.configure_limits("slack", ActionType.WEBHOOK_REQUEST, slack_limits)
+
     
     async def validate_webhook_security(
         self,
@@ -116,11 +88,13 @@ class SecureWebhookHandler:
             
             # Check rate limiting first
             rate_limit_result = await rate_limiter.check_rate_limit(
-                client_id, webhook_source, ActionType.WEBHOOK_REQUEST,
-                request_size=len(raw_payload),
+                client_id=client_id,
+                endpoint=f"webhook_{webhook_source}",
+                priority=RequestPriority.NORMAL,
                 metadata={
                     "user_agent": user_agent,
-                    "webhook_source": webhook_source
+                    "webhook_source": webhook_source,
+                    "payload_size": len(raw_payload)
                 }
             )
             

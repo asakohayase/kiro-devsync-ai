@@ -25,7 +25,7 @@ from devsync_ai.webhooks.jira_assignment_webhook_handler import (
     is_assignment_change_event,
     extract_assignment_change_details
 )
-from devsync_ai.core.enhanced_notification_handler import EnrichedEvent
+from devsync_ai.core.agent_hooks import EnrichedEvent
 from devsync_ai.core.event_classification_engine import EventCategory, UrgencyLevel
 
 
