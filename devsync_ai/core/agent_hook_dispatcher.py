@@ -615,4 +615,37 @@ class AgentHookDispatcher:
                 'status': 'error',
                 'timestamp': datetime.now(timezone.utc).isoformat(),
                 'error': str(e)
-            }
+            }      
+      }
+
+
+# Create default instance for global use
+_default_hook_registry = None
+_default_lifecycle_manager = None
+_default_dispatcher = None
+
+
+def get_default_hook_dispatcher() -> AgentHookDispatcher:
+    """Get or create the default hook dispatcher instance."""
+    global _default_hook_registry, _default_lifecycle_manager, _default_dispatcher
+    
+    if _default_dispatcher is None:
+        # Create default hook registry
+        if _default_hook_registry is None:
+            _default_hook_registry = HookRegistry()
+        
+        # Create default lifecycle manager
+        if _default_lifecycle_manager is None:
+            _default_lifecycle_manager = HookLifecycleManager(_default_hook_registry)
+        
+        # Create dispatcher
+        _default_dispatcher = AgentHookDispatcher(
+            hook_registry=_default_hook_registry,
+            lifecycle_manager=_default_lifecycle_manager
+        )
+    
+    return _default_dispatcher
+
+
+# Create default instance
+default_hook_dispatcher = get_default_hook_dispatcher()

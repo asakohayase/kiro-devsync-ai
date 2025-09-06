@@ -33,7 +33,7 @@ async def initialize_assignment_hook():
         await assignment_hook.initialize()
         
         # Register the hook with the dispatcher
-        default_hook_dispatcher.register_hook("jira:assignment_change", assignment_hook)
+        await default_hook_dispatcher.register_hook(assignment_hook)
         
         logger.info("✅ JIRA Assignment Hook initialized and registered")
         
@@ -46,7 +46,7 @@ async def shutdown_assignment_hook():
     """Shutdown the JIRA assignment hook."""
     try:
         # Unregister the hook
-        default_hook_dispatcher.unregister_hook("jira:assignment_change")
+        await default_hook_dispatcher.unregister_hook(assignment_hook.hook_id)
         
         logger.info("✅ JIRA Assignment Hook shutdown complete")
         
@@ -327,7 +327,8 @@ async def assignment_webhook_health():
         hook_initialized = assignment_hook.jira_service is not None
         
         # Check if hook is registered
-        hook_registered = "jira:assignment_change" in default_hook_dispatcher._hooks
+        active_hooks = await default_hook_dispatcher.get_active_hooks()
+        hook_registered = any(hook.hook_id == assignment_hook.hook_id for hook in active_hooks)
         
         status = {
             "status": "healthy" if hook_initialized and hook_registered else "degraded",
