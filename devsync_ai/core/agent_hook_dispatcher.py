@@ -615,8 +615,7 @@ class AgentHookDispatcher:
                 'status': 'error',
                 'timestamp': datetime.now(timezone.utc).isoformat(),
                 'error': str(e)
-            }      
-      }
+            }
 
 
 # Create default instance for global use
