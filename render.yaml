@@ -14,8 +14,10 @@ services:
         value: asakohayase/kiro-devsync-ai
       - key: SUPABASE_URL
         value: https://pbkmbvvqjjglvuoilbwu.supabase.co
-      - key: SUPABASE_KEY
+      - key: SUPABASE_ANON_KEY
         value: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBia21idnZxampnbHZ1b2lsYnd1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQzMzQ3NzcsImV4cCI6MjA2OTkxMDc3N30.3Sd7IFUDbJ78J4tSfceBgl2SLHV9_Pois3sgAkmOqfQ
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        value: your-service-role-key-here
       - key: REDIS_URL
         value: redis://localhost:6379
       - key: JIRA_URL
