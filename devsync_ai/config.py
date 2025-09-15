@@ -20,7 +20,8 @@ class Settings(BaseSettings):
 
     # Database settings
     supabase_url: str = Field(..., env="SUPABASE_URL")
-    supabase_anon_key: str = Field(..., env="SUPABASE_ANON_KEY")
+    supabase_key: Optional[str] = Field(default=None, env="SUPABASE_KEY")
+    supabase_anon_key: Optional[str] = Field(default=None, env="SUPABASE_ANON_KEY")
     supabase_service_role_key: Optional[str] = Field(default=None, env="SUPABASE_SERVICE_ROLE_KEY")
     supabase_project_ref: Optional[str] = Field(default=None, env="SUPABASE_PROJECT_REF")
 

@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
 import logging
+import os
 import time
 from typing import Callable
 
@@ -21,6 +22,31 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def validate_supabase_config():
+    """Validate Supabase configuration on startup."""
+    supabase_url = os.getenv("SUPABASE_URL")
+    supabase_key = os.getenv("SUPABASE_KEY")
+    supabase_anon_key = os.getenv("SUPABASE_ANON_KEY")
+    
+    if not supabase_url:
+        raise ValueError("SUPABASE_URL environment variable is required")
+    
+    # Try SUPABASE_KEY first, fall back to SUPABASE_ANON_KEY
+    if not supabase_key and not supabase_anon_key:
+        raise ValueError(
+            "Either SUPABASE_KEY or SUPABASE_ANON_KEY environment variable is required. "
+            "SUPABASE_KEY is preferred for full database access."
+        )
+    
+    # Log which key is being used
+    if supabase_key:
+        logger.info("✅ Using SUPABASE_KEY for database access")
+    else:
+        logger.info("⚠️  Using SUPABASE_ANON_KEY for database access (limited permissions)")
+    
+    return supabase_url, supabase_key or supabase_anon_key
+
+
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application."""
 
@@ -35,6 +61,12 @@ def create_app() -> FastAPI:
 
     # Add middleware
     setup_middleware(app)
+
+    # Add root health endpoint
+    @app.get("/")
+    async def root():
+        """Root health endpoint."""
+        return {"status": "ok", "service": "DevSync AI"}
 
     # Add routes
     app.include_router(api_router, prefix=settings.api_prefix)
@@ -95,6 +127,14 @@ def setup_event_handlers(app: FastAPI) -> None:
     async def startup_event():
         """Initialize application on startup."""
         logger.info(f"Starting {settings.app_name} v{settings.app_version}")
+        
+        # Validate Supabase configuration
+        try:
+            validate_supabase_config()
+        except ValueError as e:
+            logger.error(f"❌ Configuration error: {e}")
+            raise
+        
         logger.info("🎯 Using webhook-driven architecture for real-time updates")
 
         # NOTE: JIRA sync scheduler removed - using GitHub webhooks for real-time updates
