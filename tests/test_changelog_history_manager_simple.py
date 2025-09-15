@@ -16,7 +16,7 @@ from typing import List, Dict, Any
 class MockConfig:
     def __init__(self):
         self.SUPABASE_URL = "https://test.supabase.co"
-        self.SUPABASE_KEY = "test_key"
+        self.supabase_service_role_key = "test_key"
 
 
 class MockChangelogEntry:

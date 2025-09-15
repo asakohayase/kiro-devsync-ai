@@ -119,7 +119,7 @@ class NotificationSystem:
         try:
             # Try to get credentials from config or environment
             url = self.config.supabase_url or os.getenv('SUPABASE_URL')
-            key = self.config.supabase_key or os.getenv('SUPABASE_ANON_KEY')
+            key = self.config.supabase_key or os.getenv('SUPABASE_SERVICE_ROLE_KEY')
             
             if url and key:
                 try:

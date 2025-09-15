@@ -21,10 +21,10 @@ async def check_connection() -> bool:
         # Check if we have valid-looking credentials
         if (
             db.settings.supabase_url == "https://your-project.supabase.co"
-            or db.settings.supabase_key == "your-supabase-anon-key"
+            or db.settings.api_key == "your-supabase-anon-key"
         ):
             print("✗ Database connection failed: Using example credentials")
-            print("  Please update SUPABASE_URL and SUPABASE_KEY in your .env file")
+            print("  Please update SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in your .env file")
             print("  See docs/database-setup.md for instructions")
             return False
 
@@ -39,7 +39,7 @@ async def check_connection() -> bool:
         error_msg = str(e)
         if "Invalid API key" in error_msg:
             print("✗ Database connection failed: Invalid Supabase API key")
-            print("  Please check your SUPABASE_KEY in .env file")
+            print("  Please check your SUPABASE_SERVICE_ROLE_KEY in .env file")
         elif "Invalid URL" in error_msg:
             print("✗ Database connection failed: Invalid Supabase URL")
             print("  Please check your SUPABASE_URL in .env file")
@@ -50,7 +50,7 @@ async def check_connection() -> bool:
         error_msg = str(e)
         if "unexpected keyword argument" in error_msg:
             print("✗ Database connection failed: Invalid credentials format")
-            print("  Please verify your SUPABASE_URL and SUPABASE_KEY are correct")
+            print("  Please verify your SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are correct")
         else:
             print(f"✗ Unexpected error during connection test: {e}")
         return False
@@ -177,7 +177,7 @@ async def main():
     else:
         print("✗ Some database checks failed.")
         print("\nPlease review the errors above and:")
-        print("1. Verify your SUPABASE_URL and SUPABASE_KEY in .env")
+        print("1. Verify your SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in .env")
         print("2. Run database migrations if tables are missing")
         print("3. Check the database setup guide in docs/database-setup.md")
         sys.exit(1)

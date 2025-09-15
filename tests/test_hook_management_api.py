@@ -16,7 +16,7 @@ from fastapi import FastAPI
 
 # Set required environment variables for testing
 os.environ.setdefault("SUPABASE_URL", "https://test.supabase.co")
-os.environ.setdefault("SUPABASE_KEY", "test-key")
+os.environ.setdefault("SUPABASE_SERVICE_ROLE_KEY", "test-key")
 os.environ.setdefault("JIRA_SERVER_URL", "https://test.atlassian.net")
 os.environ.setdefault("JIRA_USERNAME", "test@example.com")
 os.environ.setdefault("JIRA_API_TOKEN", "test-token")

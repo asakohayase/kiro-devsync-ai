@@ -42,7 +42,7 @@ Once your project is created, you'll need two pieces of information:
 2. Edit the `.env` file and update the Supabase configuration:
    ```env
    SUPABASE_URL=https://your-project-id.supabase.co
-   SUPABASE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+   SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
    ```
 
 ## Step 4: Run Database Migrations
@@ -122,7 +122,7 @@ The migration creates the following tables:
 ## Troubleshooting
 
 ### Connection Issues
-- Verify your `SUPABASE_URL` and `SUPABASE_KEY` are correct
+- Verify your `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are correct
 - Check that your Supabase project is active (not paused)
 - Ensure your network can reach supabase.co
 

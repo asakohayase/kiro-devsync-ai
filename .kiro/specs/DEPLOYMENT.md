@@ -37,7 +37,7 @@
    GITHUB_WEBHOOK_SECRET=<your-webhook-secret>
    GITHUB_REPOSITORY=asakohayase/kiro-devsync-ai
    SUPABASE_URL=https://pbkmbvvqjjglvuoilbwu.supabase.co
-   SUPABASE_KEY=<your-supabase-key>
+   SUPABASE_SERVICE_ROLE_KEY=<your-supabase-service-role-key>
    ```
 
 5. **Deploy**:
@@ -71,7 +71,7 @@
 - **Build script fails**: Try fallback build command: `pip install --no-cache-dir --only-binary=cryptography,bcrypt,pydantic -r requirements.txt`
 - **App crashes**: Check logs in Render dashboard
 - **GitHub API fails**: Verify GITHUB_TOKEN is set correctly
-- **Database issues**: Check SUPABASE_URL and SUPABASE_KEY
+- **Database issues**: Check SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY
 - **Build cache issues**: Try triggering a manual deploy to clear cache
 
 ### Alternative Build Commands (if build script fails)

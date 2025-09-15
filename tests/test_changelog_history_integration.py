@@ -209,7 +209,7 @@ def mock_config():
     """Mock configuration"""
     config = Mock()
     config.SUPABASE_URL = "https://test.supabase.co"
-    config.SUPABASE_KEY = "test_key"
+    config.supabase_service_role_key = "test_key"
     return config
 
 

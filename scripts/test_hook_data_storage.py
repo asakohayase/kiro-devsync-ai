@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 async def check_environment():
     """Check if the test environment is properly configured."""
-    required_env_vars = ["SUPABASE_URL", "SUPABASE_KEY"]
+    required_env_vars = ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"]
     missing_vars = []
     
     for var in required_env_vars:
@@ -180,7 +180,7 @@ def print_usage():
     print()
     print("Environment Variables Required:")
     print("  SUPABASE_URL  - Your Supabase project URL")
-    print("  SUPABASE_KEY  - Your Supabase API key")
+    print("  SUPABASE_SERVICE_ROLE_KEY  - Your Supabase service role key")
     print()
 
 

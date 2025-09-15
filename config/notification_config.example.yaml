@@ -13,7 +13,7 @@ system:
 # Database configuration
 database:
   supabase_url: "${SUPABASE_URL}"
-  supabase_key: "${SUPABASE_ANON_KEY}"
+  supabase_key: "${SUPABASE_SERVICE_ROLE_KEY}"
 
 # Slack API configuration
 slack:

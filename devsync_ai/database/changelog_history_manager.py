@@ -174,10 +174,10 @@ class ChangelogHistoryManager:
     def __init__(self, config):
         """Initialize the changelog history manager"""
         self.config = config
-        if create_client and hasattr(config, 'supabase_url') and hasattr(config, 'supabase_anon_key'):
+        if create_client and hasattr(config, 'supabase_url') and hasattr(config, 'supabase_service_role_key'):
             self.supabase = create_client(
                 config.supabase_url,
-                config.supabase_anon_key
+                config.supabase_service_role_key
             )
         else:
             self.supabase = None

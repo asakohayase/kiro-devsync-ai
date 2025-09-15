@@ -18,10 +18,10 @@ class SupabaseClient:
 
     def __init__(self):
         self.base_url = os.getenv("SUPABASE_URL")
-        self.api_key = os.getenv("SUPABASE_ANON_KEY")
+        self.api_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 
         if not self.base_url or not self.api_key:
-            raise ValueError("SUPABASE_URL and SUPABASE_ANON_KEY environment variables are required")
+            raise ValueError("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY environment variables are required")
 
         self.headers = {
             "apikey": self.api_key,

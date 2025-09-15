@@ -247,7 +247,7 @@ class NotificationConfigManager:
         
         # Database settings
         config.supabase_url = os.getenv("SUPABASE_URL", config.supabase_url)
-        config.supabase_key = os.getenv("SUPABASE_ANON_KEY", config.supabase_key)
+        config.supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", config.supabase_key)
         
         # Slack settings
         config.slack_bot_token = os.getenv("SLACK_BOT_TOKEN", config.slack_bot_token)
@@ -473,7 +473,7 @@ class NotificationConfigManager:
             },
             "database": {
                 "supabase_url": "${SUPABASE_URL}",
-                "supabase_key": "${SUPABASE_ANON_KEY}"
+                "supabase_key": "${SUPABASE_SERVICE_ROLE_KEY}"
             },
             "slack": {
                 "bot_token": "${SLACK_BOT_TOKEN}",

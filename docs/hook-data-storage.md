@@ -247,7 +247,7 @@ Ensure the following environment variables are set:
 
 ```bash
 SUPABASE_URL=your_supabase_project_url
-SUPABASE_KEY=your_supabase_api_key
+SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
 ```
 
 ### 3. Migration Script

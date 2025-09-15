@@ -112,7 +112,7 @@ Set the required environment variables:
 
 ```bash
 export SUPABASE_URL="your-supabase-url"
-export SUPABASE_ANON_KEY="your-supabase-anon-key"
+export SUPABASE_SERVICE_ROLE_KEY="your-supabase-service-role-key"
 export SLACK_BOT_TOKEN="your-slack-bot-token"
 export SLACK_APP_TOKEN="your-slack-app-token"
 ```

@@ -67,7 +67,7 @@ All configuration is managed through environment variables. See `.env.example` f
 
 ### Required Environment Variables
 
-- `SUPABASE_URL` and `SUPABASE_KEY`: Database connection (see [Database Setup Guide](docs/database-setup.md))
+- `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`: Database connection (see [Database Setup Guide](docs/database-setup.md))
 - `GITHUB_TOKEN`: GitHub API access
 - `JIRA_URL`, `JIRA_USERNAME`, `JIRA_TOKEN`: JIRA integration  
 - `SLACK_BOT_TOKEN`, `SLACK_SIGNING_SECRET`: Slack integration
